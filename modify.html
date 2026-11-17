@@ -1,0 +1,820 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>HEX REA · Studio</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script>
+tailwind.config = {
+  theme: {
+    extend: {
+      fontFamily: {
+        sans: ['Inter', 'system-ui', 'sans-serif'],
+        mono: ['JetBrains Mono', 'ui-monospace', 'monospace']
+      }
+    }
+  }
+}
+</script>
+<style>
+:root{
+  --bg:#06070a;
+  --elev:#0c0e14;
+  --elev2:#12151f;
+  --border:rgba(255,255,255,.08);
+  --border-hi:rgba(255,255,255,.16);
+  --red:#ff2740;
+  --red-hi:#ff445a;
+  --text:#f8fafc;
+  --sub:#94a3b8;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font-family:Inter,system-ui,sans-serif}
+body{display:flex;flex-direction:column;overflow:hidden}
+.mono{font-family:'JetBrains Mono',ui-monospace,monospace}
+
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:99px}
+::-webkit-scrollbar-track{background:transparent}
+
+@keyframes glide{0%{transform:translateX(-100%)}100%{transform:translateX(280%)}}
+@keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+.appear{animation:fadeIn .18s cubic-bezier(.16,1,.3,1)}
+
+.progress-track{height:3px;width:100%;background:rgba(255,255,255,.07);border-radius:99px;overflow:hidden;position:relative}
+.progress-bar{position:absolute;top:0;bottom:0;width:36%;border-radius:99px;background:linear-gradient(90deg,transparent,var(--red),#fff,var(--red),transparent);animation:glide 1s linear infinite}
+
+/* Segmented Tabs */
+.seg{display:inline-flex;padding:3px;border-radius:10px;background:rgba(255,255,255,.04);border:1px solid var(--border)}
+.seg-btn{font:500 12px Inter,sans-serif;padding:5px 12px;border-radius:7px;color:var(--sub);transition:all .15s;cursor:pointer;display:inline-flex;align-items:center;gap:5px}
+.seg-btn.active{background:var(--red);color:#fff;font-weight:600;box-shadow:0 2px 10px rgba(255,39,64,.35)}
+
+/* Layout panes */
+.stage{flex:1 1 0;min-height:0;display:flex;position:relative;overflow:hidden}
+.pane{display:none;flex-direction:column;min-height:0;min-width:0;flex:1 1 0}
+body[data-tab=studio] .pane-studio{display:flex}
+body[data-tab=diffs] .pane-diffs{display:flex}
+body[data-tab=preview] .pane-preview{display:flex}
+
+@media (min-width:1024px){
+  body[data-tab=studio] .pane-studio{display:flex;flex:1 1 52%}
+  body[data-tab=studio] .pane-preview{display:flex;flex:1 1 48%;border-left:1px solid var(--border)}
+  body[data-tab=diffs] .pane-diffs{display:flex}
+  body[data-tab=preview] .pane-preview{display:flex}
+}
+
+/* Composer */
+.composer{background:var(--elev);border:1px solid var(--border-hi);border-radius:16px;box-shadow:0 12px 40px rgba(0,0,0,.55);transition:border-color .15s,box-shadow .15s}
+.composer:focus-within{border-color:rgba(255,39,64,.7);box-shadow:0 12px 40px rgba(255,39,64,.12)}
+
+.chip{display:inline-flex;align-items:center;gap:5px;font:500 11px Inter,sans-serif;padding:4px 9px;border-radius:99px;background:rgba(255,255,255,.05);border:1px solid var(--border);color:#cbd5e1;transition:all .14s;cursor:pointer;max-width:185px}
+.chip:hover{background:rgba(255,255,255,.1);color:#fff;border-color:var(--border-hi)}
+
+.icon-btn{width:34px;height:34px;border-radius:9px;border:1px solid var(--border);background:rgba(255,255,255,.04);color:#e2e8f0;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;transition:all .14s}
+.icon-btn:hover{background:rgba(255,255,255,.1);color:#fff;border-color:var(--border-hi)}
+
+/* Diff cards */
+.diff-rm{display:block;padding:3px 12px;background:rgba(255,39,64,.1);color:#ff8f9c;white-space:pre-wrap;word-break:break-all}
+.diff-add{display:block;padding:3px 12px;background:rgba(52,211,153,.1);color:#6ee7b7;white-space:pre-wrap;word-break:break-all}
+
+/* Drawer & Modals */
+.backdrop{position:fixed;inset:0;z-index:60;display:none;background:rgba(2,3,6,.76);backdrop-filter:blur(6px)}
+.backdrop.show{display:flex}
+.sheet{width:100%;max-width:420px;background:var(--elev);border:1px solid var(--border-hi);border-radius:16px;padding:18px;box-shadow:0 24px 70px rgba(0,0,0,.8);margin:auto}
+.drawer{width:300px;max-width:86vw;height:100%;background:var(--elev);border-right:1px solid var(--border-hi);display:flex;flex-direction:column}
+</style>
+</head>
+<body data-tab="studio">
+
+<!-- MINIMAL TOP BAR -->
+<header class="flex-none h-[54px] px-3 md:px-5 border-b border-white/[0.08] bg-[#08090d] flex items-center justify-between gap-2">
+  <div class="flex items-center gap-2 min-w-0">
+    <div class="w-7 h-7 rounded-lg bg-[#ff2740] flex items-center justify-center text-white flex-none shadow-[0_0_16px_rgba(255,39,64,.4)]">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+    </div>
+    <button id="siteSwitcherBtn" class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] min-w-0 transition-colors">
+      <span id="siteName" class="text-xs font-semibold text-white truncate max-w-[115px] sm:max-w-[200px]">Select site</span>
+      <svg class="text-slate-400 flex-none" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+    </button>
+  </div>
+
+  <!-- Segmented Switcher -->
+  <div class="seg hidden sm:inline-flex">
+    <button data-tab-btn="studio" class="seg-btn active">Studio</button>
+    <button data-tab-btn="diffs" class="seg-btn">Diffs <span id="diffBadge" class="hidden mono text-[10px] px-1.5 rounded-full bg-white/15">0</span></button>
+    <button data-tab-btn="preview" class="seg-btn">Preview</button>
+  </div>
+
+  <!-- Right Actions -->
+  <div class="flex items-center gap-1.5 flex-none">
+    <button id="exportBtn" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white text-black hover:bg-slate-200 text-xs font-semibold transition-colors cursor-pointer">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      <span>Export</span>
+    </button>
+    <button id="menuBtn" class="icon-btn" title="Settings & Actions">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+    </button>
+  </div>
+</header>
+
+<!-- MOBILE SEGMENTED BAR -->
+<div class="sm:hidden flex-none px-3 py-2 border-b border-white/[0.07] bg-[#08090d] flex justify-center">
+  <div class="seg w-full grid grid-cols-3">
+    <button data-tab-btn="studio" class="seg-btn active justify-center">Studio</button>
+    <button data-tab-btn="diffs" class="seg-btn justify-center">Diffs</button>
+    <button data-tab-btn="preview" class="seg-btn justify-center">Preview</button>
+  </div>
+</div>
+
+<!-- MAIN STAGE -->
+<main class="stage">
+
+  <!-- PANE 1: AI STUDIO -->
+  <section class="pane pane-studio bg-[radial-gradient(ellipse_at_top,rgba(255,39,64,.07),transparent_55%)]">
+    <div id="chatFeed" class="flex-1 min-h-0 overflow-y-auto px-3 sm:px-6 py-5">
+      <div id="chatInner" class="max-w-2xl mx-auto flex flex-col gap-4"></div>
+    </div>
+
+    <!-- Floating Composer Dock -->
+    <div class="flex-none px-3 sm:px-6 pb-3 sm:pb-5 pt-2">
+      <div class="max-w-2xl mx-auto">
+        <!-- Groq Progress Bar -->
+        <div id="loadingWrap" class="hidden mb-2.5 px-1">
+          <div class="flex items-center justify-between text-[11px] mb-1.5">
+            <span class="text-slate-200 font-medium flex items-center gap-2">
+              <span class="w-1.5 h-1.5 rounded-full bg-[#ff2740]"></span>
+              <span id="loadingText">Groq LPU modifying…</span>
+            </span>
+            <span id="loadingTimer" class="mono text-slate-400">0.0s</span>
+          </div>
+          <div class="progress-track"><div class="progress-bar"></div></div>
+        </div>
+
+        <div class="composer p-2.5 sm:p-3">
+          <textarea id="promptInput" rows="2" placeholder="Describe what to change or add on this site…"
+            class="w-full bg-transparent text-[13px] text-white placeholder-slate-500 resize-none focus:outline-none px-1.5 py-1 leading-relaxed"></textarea>
+          <div class="flex items-center justify-between gap-2 pt-2 mt-1 border-t border-white/[0.06]">
+            <div class="flex items-center gap-1.5 min-w-0 flex-wrap">
+              <button id="scopeChip" class="chip">
+                <svg class="text-[#ff2740] flex-none" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>
+                <span id="scopeLabel" class="truncate">Entire Site</span>
+              </button>
+              <button id="modelChip" class="chip">
+                <svg class="text-sky-400 flex-none" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                <span id="modelLabel" class="truncate">qwen3.8-27b</span>
+              </button>
+            </div>
+            <button id="sendBtn" class="w-8 h-8 rounded-full bg-[#ff2740] hover:bg-[#ff445a] disabled:opacity-40 text-white flex items-center justify-center flex-none transition-all cursor-pointer shadow-[0_2px_12px_rgba(255,39,64,.45)]" title="Run modification">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PANE 2: CLEAN CODE DIFFS & FILE INSPECTOR -->
+  <section class="pane pane-diffs bg-[#080a0f]">
+    <div class="flex-none px-4 py-2.5 border-b border-white/[0.08] flex items-center justify-between gap-2">
+      <div class="flex items-center gap-2">
+        <span class="text-xs font-semibold text-white">Code Changes</span>
+        <span id="diffMeta" class="mono text-[11px] text-slate-400"></span>
+      </div>
+      <div class="flex items-center gap-2">
+        <select id="fileInspectSelect" class="bg-[#0c0e14] border border-white/10 rounded-lg px-2.5 py-1 text-[11px] mono text-slate-200 max-w-[190px] focus:outline-none focus:border-[#ff2740]">
+          <option value="">Inspect a file…</option>
+        </select>
+      </div>
+    </div>
+    <div id="diffsScroll" class="flex-1 min-h-0 overflow-y-auto p-4">
+      <div id="diffsInner" class="max-w-3xl mx-auto space-y-3">
+        <div class="rounded-xl border border-white/[0.08] bg-[#0c0e14] p-6 text-center text-xs text-slate-400">
+          No modifications applied yet. Ask the AI in Studio to make a change, or pick a file above to inspect its code.
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PANE 3: LIVE PREVIEW -->
+  <section class="pane pane-preview bg-white">
+    <div class="flex-none h-[42px] px-3 bg-[#090b10] border-b border-white/[0.08] flex items-center justify-between gap-2">
+      <div class="flex items-center gap-2 min-w-0">
+        <span class="w-2 h-2 rounded-full bg-emerald-400 flex-none"></span>
+        <span id="previewUrlLabel" class="mono text-[11px] text-slate-300 truncate">Modified preview</span>
+      </div>
+      <div class="flex items-center gap-1.5 flex-none">
+        <button id="reloadPreviewBtn" class="icon-btn !w-7 !h-7" title="Reload preview">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+        </button>
+        <button id="openPreviewTabBtn" class="icon-btn !w-7 !h-7" title="Open in browser tab">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+        </button>
+      </div>
+    </div>
+    <div class="flex-1 min-h-0 relative bg-white">
+      <iframe id="previewFrame" class="w-full h-full border-0 bg-white hidden" sandbox="allow-scripts allow-same-origin allow-forms allow-modals"></iframe>
+      <div id="previewEmpty" class="absolute inset-0 bg-[#07080c] flex flex-col items-center justify-center text-center p-6">
+        <div class="w-10 h-10 rounded-full bg-white/[0.05] border border-white/10 flex items-center justify-center text-[#ff2740] mb-3">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+        </div>
+        <p class="text-sm font-medium text-white">Live Preview</p>
+        <p class="text-xs text-slate-400 mt-1 max-w-xs">Select a site and click Reload (or make an edit) to view your modified copy live.</p>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<!-- SLIDE-OVER SITES & FILES DRAWER -->
+<div id="siteDrawer" class="backdrop">
+  <div class="drawer" onclick="event.stopPropagation()">
+    <div class="px-4 py-3 border-b border-white/[0.08] flex items-center justify-between">
+      <span class="text-xs font-semibold tracking-wide text-white">Extracted Sites &amp; Files</span>
+      <button class="icon-btn !w-7 !h-7" onclick="hideBackdrop('siteDrawer')">✕</button>
+    </div>
+    <div class="p-3 border-b border-white/[0.08] max-h-[45%] overflow-y-auto">
+      <div class="text-[10px] font-semibold uppercase tracking-wider text-[#ff2740] mb-2">Sites from Recon [1]</div>
+      <div id="drawerSites" class="space-y-1.5"></div>
+    </div>
+    <div class="p-3 flex-1 min-h-0 overflow-y-auto">
+      <div class="flex items-center justify-between mb-2">
+        <span class="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Workspace Files</span>
+        <span id="drawerFileCount" class="mono text-[10px] text-slate-500">0</span>
+      </div>
+      <div id="drawerFiles" class="space-y-1"></div>
+    </div>
+  </div>
+</div>
+
+<!-- SETTINGS & ACTIONS MODAL -->
+<div id="menuModal" class="backdrop">
+  <div class="sheet" onclick="event.stopPropagation()">
+    <div class="flex items-center justify-between mb-4">
+      <h3 class="text-sm font-semibold text-white">Studio Settings</h3>
+      <button class="icon-btn !w-7 !h-7" onclick="hideBackdrop('menuModal')">✕</button>
+    </div>
+    <div class="space-y-2 mb-4">
+      <button id="mUndoBtn" class="w-full flex items-center justify-between px-3 py-2.5 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.07] text-xs text-white cursor-pointer">
+        <span>Undo Last Modification</span><span class="mono text-[10px] text-slate-400">/undo</span>
+      </button>
+      <button id="mResetBtn" class="w-full flex items-center justify-between px-3 py-2.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/15 border border-amber-500/25 text-xs text-amber-200 cursor-pointer">
+        <span>Restore Original Extracted Site</span><span class="mono text-[10px] text-amber-300">/reset</span>
+      </button>
+      <button id="mClearBtn" class="w-full flex items-center justify-between px-3 py-2.5 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.07] text-xs text-slate-200 cursor-pointer">
+        <span>Clear Chat History</span><span class="mono text-[10px] text-slate-400">/clear</span>
+      </button>
+      <a href="/" class="w-full flex items-center justify-between px-3 py-2.5 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.07] text-xs text-slate-200">
+        <span>Back to Recon Editor</span><span class="mono text-[10px] text-slate-400">/</span>
+      </a>
+    </div>
+    <div class="pt-3 border-t border-white/[0.08]">
+      <label class="text-[11px] font-medium text-slate-300 block mb-1.5">API Key (Groq gsk_… or Gemini — auto-detected)</label>
+      <div class="flex gap-2">
+        <input id="groqKeyInp" type="password" placeholder="Paste Groq or Gemini key" class="flex-1 bg-[#06070a] border border-white/15 rounded-lg px-3 py-2 text-xs mono text-white focus:outline-none focus:border-[#ff2740]">
+        <button id="saveKeyBtn" class="px-3.5 py-2 rounded-lg bg-[#ff2740] hover:bg-[#ff445a] text-xs font-semibold text-white cursor-pointer">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- GROQ MODEL MODAL -->
+<div id="modelModal" class="backdrop">
+  <div class="sheet" onclick="event.stopPropagation()">
+    <div class="flex items-center justify-between mb-3">
+      <h3 class="text-sm font-semibold text-white">AI Model</h3>
+      <button class="icon-btn !w-7 !h-7" onclick="hideBackdrop('modelModal')">✕</button>
+    </div>
+    <div id="modelOptions" class="space-y-2 mb-3"></div>
+    <div class="pt-3 border-t border-white/[0.08] flex gap-2">
+      <input id="customModelInp" placeholder="Custom model id (gemini-… or Groq id)" class="flex-1 bg-[#06070a] border border-white/15 rounded-lg px-3 py-2 text-xs mono text-white focus:outline-none focus:border-[#ff2740]">
+      <button id="useCustomModelBtn" class="px-3.5 py-2 rounded-lg bg-white text-black text-xs font-semibold cursor-pointer">Use</button>
+    </div>
+  </div>
+</div>
+
+<!-- TARGET SCOPE MODAL -->
+<div id="scopeModal" class="backdrop">
+  <div class="sheet max-h-[80vh] flex flex-col" onclick="event.stopPropagation()">
+    <div class="flex items-center justify-between mb-3 flex-none">
+      <h3 class="text-sm font-semibold text-white">Target Section or URL</h3>
+      <button class="icon-btn !w-7 !h-7" onclick="hideBackdrop('scopeModal')">✕</button>
+    </div>
+    <div id="scopeList" class="flex-1 min-h-0 overflow-y-auto space-y-1.5"></div>
+  </div>
+</div>
+
+<!-- EXPORT MODAL -->
+<div id="exportModal" class="backdrop">
+  <div class="sheet" onclick="event.stopPropagation()">
+    <div class="flex items-center justify-between mb-3">
+      <h3 class="text-sm font-semibold text-emerald-400">Modified Site Ready</h3>
+      <button class="icon-btn !w-7 !h-7" onclick="hideBackdrop('exportModal')">✕</button>
+    </div>
+    <p class="text-xs text-slate-400 mb-2">Saved to your device:</p>
+    <div id="exportPath" class="mono text-[11px] bg-black/50 border border-white/10 rounded-lg p-2.5 text-emerald-300 break-all mb-4"></div>
+    <a id="exportZip" href="#" class="block text-center w-full py-2.5 rounded-xl bg-[#ff2740] hover:bg-[#ff445a] text-xs font-semibold text-white">Download ZIP</a>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div id="toast" class="fixed bottom-4 left-1/2 -translate-x-1/2 translate-y-16 opacity-0 pointer-events-none z-[80] transition-all duration-200">
+  <div class="flex items-center gap-2 px-3.5 py-2 rounded-full border border-white/15 bg-[#12151f] text-xs text-white shadow-2xl">
+    <span id="toastDot" class="w-2 h-2 rounded-full bg-[#ff2740]"></span>
+    <span id="toastMsg"></span>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text != null) e.textContent = text;
+  return e;
+}
+
+const S = {
+  id: null, site: null, slots: [], slot: 'qwen', active: null,
+  files: [], sections: {}, scope: '', previewUrl: '', hasKey: false, busy: false
+};
+let toastT, timerT;
+
+function toast(msg, warn = false) {
+  $('toastMsg').textContent = msg;
+  $('toastDot').style.background = warn ? '#fbbf24' : '#ff2740';
+  $('toast').classList.remove('translate-y-16', 'opacity-0');
+  clearTimeout(toastT);
+  toastT = setTimeout(() => $('toast').classList.add('translate-y-16', 'opacity-0'), 2400);
+}
+
+function showBackdrop(id) { $(id).classList.add('show'); }
+function hideBackdrop(id) { $(id).classList.remove('show'); }
+document.querySelectorAll('.backdrop').forEach(b => b.addEventListener('click', () => b.classList.remove('show')));
+
+async function apiGet(path) {
+  const r = await fetch(path);
+  const d = await r.json();
+  if (!d.success) throw new Error(d.error || 'Request failed');
+  return d;
+}
+async function apiPost(path, body) {
+  const r = await fetch(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Hex': '1' },
+    body: JSON.stringify(body || {})
+  });
+  const d = await r.json();
+  if (!d.success) throw new Error(d.error || 'Request failed');
+  return d;
+}
+
+function setTab(tab) {
+  document.body.dataset.tab = tab;
+  document.querySelectorAll('[data-tab-btn]').forEach(b => {
+    b.classList.toggle('active', b.dataset.tabBtn === tab);
+  });
+}
+document.querySelectorAll('[data-tab-btn]').forEach(b => b.onclick = () => setTab(b.dataset.tabBtn));
+
+function syncModelChip() {
+  const m = (S.active && S.active.model) ? S.active.model.split('/').pop() : S.slot;
+  $('modelLabel').textContent = m;
+}
+
+function syncPreview(force = false) {
+  if (!S.previewUrl) return;
+  $('previewEmpty').classList.add('hidden');
+  $('previewFrame').classList.remove('hidden');
+  if (force || !$('previewFrame').src) {
+    $('previewFrame').src = S.previewUrl + '?t=' + Date.now();
+  }
+}
+
+async function initSites(preferId = '') {
+  try {
+    const d = await apiGet('/api/mod/sites');
+    S.slots = d.slots || [];
+    S.slot = d.slot;
+    S.active = d.active;
+    S.hasKey = Boolean(d.has_groq || d.has_key);
+    syncModelChip();
+    renderDrawerSites(d.sites || []);
+
+    const target = preferId && (d.sites || []).some(x => x.id === preferId)
+      ? preferId
+      : (!S.id && d.sites && d.sites.length ? d.sites[0].id : '');
+
+    if (target) await openSite(target);
+    else if (!d.sites || !d.sites.length) renderEmptyChat(true);
+  } catch (e) { toast(e.message, true); }
+}
+
+function renderDrawerSites(sites) {
+  const box = $('drawerSites');
+  box.replaceChildren();
+  if (!sites.length) {
+    box.append(el('p', 'text-xs text-slate-500 py-2', 'No extracted sites yet. Use Recon [1] first.'));
+    return;
+  }
+  sites.forEach((s, i) => {
+    const on = S.id === s.id;
+    const b = el('button', 'w-full text-left p-2.5 rounded-xl border transition-all cursor-pointer ' +
+      (on ? 'border-[#ff2740] bg-[#ff2740]/12' : 'border-white/[0.07] bg-white/[0.02] hover:border-white/20'));
+    const top = el('div', 'flex items-center justify-between gap-2');
+    top.append(el('span', 'text-xs font-semibold text-white truncate', `[${i + 1}] ${s.netloc}`));
+    if (s.has_work) top.append(el('span', 'mono text-[9px] text-emerald-400', 'READY'));
+    b.append(top, el('div', 'text-[11px] text-slate-400 truncate mt-0.5', s.title || s.url));
+    b.onclick = () => { hideBackdrop('siteDrawer'); openSite(s.id); };
+    box.append(b);
+  });
+}
+
+function renderDrawerFiles(files) {
+  $('drawerFileCount').textContent = files.length;
+  const box = $('drawerFiles');
+  box.replaceChildren();
+  const sel = $('fileInspectSelect');
+  sel.replaceChildren();
+  sel.append(el('option', '', 'Inspect a file…'));
+
+  files.forEach(f => {
+    const b = el('button', 'w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-white/[0.05] flex items-center justify-between gap-2 cursor-pointer');
+    b.append(
+      el('span', 'mono text-[11px] text-slate-200 truncate', f.path),
+      el('span', 'mono text-[10px] text-slate-500 flex-none', f.bytes >= 1024 ? Math.round(f.bytes / 1024) + 'KB' : f.bytes + 'B')
+    );
+    b.onclick = () => { hideBackdrop('siteDrawer'); inspectFile(f.path); };
+    box.append(b);
+
+    const opt = el('option', '', f.path);
+    opt.value = f.path;
+    sel.append(opt);
+  });
+}
+
+async function openSite(id) {
+  toast('Opening workspace…');
+  try {
+    const d = await apiPost('/api/mod/open', { id, pages: 1 });
+    S.id = id;
+    S.site = d.site;
+    S.files = d.files || [];
+    S.sections = d.sections || {};
+    S.previewUrl = d.preview_url;
+    S.slots = d.slots || S.slots;
+    S.slot = d.slot;
+    S.active = d.active;
+    S.hasKey = Boolean(d.has_groq || d.has_key);
+
+    $('siteName').textContent = d.site.netloc;
+    $('previewUrlLabel').textContent = d.site.netloc + ' · modified mirror';
+    syncModelChip();
+    renderDrawerFiles(S.files);
+    renderHistory(d.history || []);
+    syncPreview(true);
+
+    const sitesRes = await apiGet('/api/mod/sites');
+    renderDrawerSites(sitesRes.sites || []);
+    if (!S.hasKey) toast('Add your Groq or Gemini key (⚙) to start editing', true);
+  } catch (e) { toast(e.message, true); }
+}
+
+function renderEmptyChat(noSites = false) {
+  const inner = $('chatInner');
+  inner.replaceChildren();
+  const box = el('div', 'py-10 text-center space-y-4 appear');
+  const title = el('h2', 'text-xl font-semibold text-white tracking-tight',
+    noSites ? 'Extract a site first' : 'What do you want to modify?');
+  const sub = el('p', 'text-xs text-slate-400 max-w-md mx-auto leading-relaxed',
+    noSites
+      ? 'Use Recon [1] to extract a website, then come right back here to modify it with Groq.'
+      : `Loaded ${S.site ? S.site.netloc : 'site'} (${S.files.length} files). Ask for any change or addition—only what you ask will be modified.`);
+  box.append(title, sub);
+
+  if (!noSites) {
+    const quick = el('div', 'flex flex-wrap items-center justify-center gap-2 pt-2');
+    ['Add a sticky dark crimson navbar', 'Restyle the main buttons with hover glow', 'Explain the [1] security & tech analysis'].forEach(txt => {
+      const c = el('button', 'px-3 py-1.5 rounded-full bg-white/[0.04] hover:bg-white/[0.09] border border-white/[0.09] text-xs text-slate-200 cursor-pointer transition-colors', txt);
+      c.onclick = () => { $('promptInput').value = txt; $('promptInput').focus(); };
+      quick.append(c);
+    });
+    box.append(quick);
+  }
+  inner.append(box);
+}
+
+function renderHistory(history) {
+  const inner = $('chatInner');
+  inner.replaceChildren();
+  if (!history.length) return renderEmptyChat(false);
+  history.forEach(m => addMessage(m.role, m.content));
+  $('chatFeed').scrollTop = $('chatFeed').scrollHeight;
+}
+
+function addMessage(role, text, meta = null) {
+  const inner = $('chatInner');
+  if (inner.firstElementChild && inner.firstElementChild.classList.contains('text-center')) {
+    inner.replaceChildren();
+  }
+  if (role === 'user') {
+    const wrap = el('div', 'flex justify-end appear');
+    const card = el('div', 'max-w-[85%] px-3.5 py-2.5 rounded-2xl rounded-br-sm bg-white/[0.09] border border-white/[0.12] text-[13px] text-white whitespace-pre-wrap leading-relaxed', text);
+    wrap.append(card);
+    inner.append(wrap);
+  } else {
+    const wrap = el('div', 'flex items-start gap-2.5 appear');
+    const av = el('div', 'w-6 h-6 rounded-lg bg-[#ff2740]/20 border border-[#ff2740]/50 text-[#ff2740] flex items-center justify-center flex-none mt-0.5 mono text-[10px] font-bold', 'H');
+    const col = el('div', 'flex-1 min-w-0 space-y-2');
+    const body = el('div', 'text-[13px] text-slate-100 whitespace-pre-wrap leading-relaxed', text);
+    col.append(body);
+
+    if (meta && (meta.applied && meta.applied.length || meta.self_fixed)) {
+      const bar = el('div', 'flex flex-wrap items-center gap-1.5 pt-1');
+      if (meta.applied && meta.applied.length) {
+        const b1 = el('button', 'px-2.5 py-1 rounded-md bg-emerald-500/12 border border-emerald-500/30 text-[11px] font-medium text-emerald-300 cursor-pointer hover:bg-emerald-500/20', `${meta.applied.length} edit(s) · View Diff`);
+        b1.onclick = () => setTab('diffs');
+        const b2 = el('button', 'px-2.5 py-1 rounded-md bg-white/[0.06] border border-white/10 text-[11px] font-medium text-white cursor-pointer hover:bg-white/10', 'Live Preview');
+        b2.onclick = () => { syncPreview(true); setTab('preview'); };
+        bar.append(b1, b2);
+      }
+      if (meta.self_fixed) {
+        bar.append(el('span', 'px-2 py-1 rounded-md bg-amber-500/12 border border-amber-500/30 text-[10.5px] font-medium text-amber-300', 'Auto-repaired'));
+      }
+      col.append(bar);
+    }
+    wrap.append(av, col);
+    inner.append(wrap);
+  }
+  $('chatFeed').scrollTop = $('chatFeed').scrollHeight;
+}
+
+function renderDiffs(ops, rounds, selfFixed) {
+  const box = $('diffsInner');
+  box.replaceChildren();
+  const badge = $('diffBadge');
+  if (ops && ops.length) {
+    badge.textContent = String(ops.length);
+    badge.classList.remove('hidden');
+  } else {
+    badge.classList.add('hidden');
+  }
+  $('diffMeta').textContent = ops && ops.length ? `${ops.length} op(s) · ${rounds} round(s)` + (selfFixed ? ' · self-fixed' : '') : '';
+
+  if (!ops || !ops.length) {
+    box.append(el('div', 'rounded-xl border border-white/[0.08] bg-[#0c0e14] p-6 text-center text-xs text-slate-400', 'No code edits in the last turn.'));
+    return;
+  }
+
+  ops.forEach(op => {
+    const card = el('div', 'rounded-xl border border-white/[0.1] bg-[#0c0e14] overflow-hidden');
+    const head = el('div', 'px-3.5 py-2 bg-white/[0.03] border-b border-white/[0.08] flex items-center justify-between gap-2');
+    head.append(
+      el('span', 'mono text-xs font-semibold text-white truncate', `${op.op} · ${op.path}`),
+      el('span', 'mono text-[10.5px] ' + (op.ok ? 'text-emerald-400' : 'text-red-400'), op.ok ? 'APPLIED' : 'ERROR')
+    );
+    card.append(head);
+
+    if (op.blocks && op.blocks.length) {
+      op.blocks.forEach((blk, idx) => {
+        card.append(el('div', 'px-3 py-1 text-[10px] mono text-slate-500 border-b border-white/[0.04]', `Patch ${idx + 1}`));
+        if (blk.search) card.append(el('pre', 'diff-rm m-0 mono text-[11px]', blk.search.split('\n').map(l => '- ' + l).join('\n')));
+        if (blk.replace) card.append(el('pre', 'diff-add m-0 mono text-[11px]', blk.replace.split('\n').map(l => '+ ' + l).join('\n')));
+      });
+    } else if (op.content) {
+      card.append(el('pre', 'diff-add m-0 mono text-[11px]', op.content.slice(0, 2500)));
+    } else if (op.error) {
+      card.append(el('div', 'p-3 text-xs text-amber-300', op.error));
+    }
+    box.append(card);
+  });
+}
+
+async function inspectFile(path) {
+  if (!S.id || !path) return;
+  try {
+    const d = await apiPost('/api/mod/file', { id: S.id, path });
+    const box = $('diffsInner');
+    box.replaceChildren();
+    const card = el('div', 'rounded-xl border border-white/[0.1] bg-[#0c0e14] overflow-hidden');
+    const head = el('div', 'px-3.5 py-2 bg-white/[0.03] border-b border-white/[0.08] flex items-center justify-between gap-2');
+    head.append(el('span', 'mono text-xs font-semibold text-white truncate', d.path));
+    const btn = el('button', 'px-2.5 py-1 rounded-md bg-[#ff2740] text-white text-[11px] font-semibold cursor-pointer', 'Target in Studio');
+    btn.onclick = () => {
+      S.scope = 'File: ' + d.path;
+      $('scopeLabel').textContent = d.path;
+      setTab('studio');
+      $('promptInput').focus();
+    };
+    head.append(btn);
+    card.append(head, el('pre', 'p-3.5 mono text-[11.5px] leading-relaxed text-slate-200 whitespace-pre-wrap break-all m-0', d.content));
+    box.append(card);
+    setTab('diffs');
+  } catch (e) { toast(e.message, true); }
+}
+
+$('fileInspectSelect').onchange = e => {
+  if (e.target.value) inspectFile(e.target.value);
+};
+
+async function runModify() {
+  if (S.busy) return;
+  const raw = $('promptInput').value.trim();
+  if (!raw) return;
+
+  const low = raw.toLowerCase();
+  $('promptInput').value = '';
+  if (low === 'p' || low === 'preview') { syncPreview(true); setTab('preview'); return; }
+  if (low === 'd' || low === 'download') return $('exportBtn').click();
+  if (low === '/undo') return $('mUndoBtn').click();
+  if (low === '/reset') return $('mResetBtn').click();
+  if (low === '/clear') return $('mClearBtn').click();
+  if (low === '/model') return openModelModal();
+  if (low === '/key') return showBackdrop('menuModal');
+
+  if (!S.id) return toast('Select a site first', true);
+  if (!S.hasKey) {
+    showBackdrop('menuModal');
+    return toast('Save your Groq or Gemini key first', true);
+  }
+
+  S.busy = true;
+  $('sendBtn').disabled = true;
+  $('loadingWrap').classList.remove('hidden');
+  $('loadingText').textContent = `${S.active ? S.active.model.split('/').pop() : 'Groq'} modifying…`;
+  const t0 = Date.now();
+  clearInterval(timerT);
+  timerT = setInterval(() => {
+    $('loadingTimer').textContent = ((Date.now() - t0) / 1000).toFixed(1) + 's';
+  }, 100);
+  addMessage('user', raw);
+
+  try {
+    const d = await apiPost('/api/mod/chat', {
+      id: S.id,
+      message: raw,
+      section: S.scope
+    });
+    addMessage('assistant', d.prose, d);
+    renderDiffs(d.ops, d.rounds, d.self_fixed);
+    S.files = d.files || S.files;
+    S.previewUrl = d.preview_url || S.previewUrl;
+    renderDrawerFiles(S.files);
+    if (d.ops && d.ops.length) syncPreview(true);
+  } catch (e) {
+    toast(e.message, true);
+    addMessage('assistant', 'Error: ' + e.message);
+  } finally {
+    clearInterval(timerT);
+    S.busy = false;
+    $('sendBtn').disabled = false;
+    $('loadingWrap').classList.add('hidden');
+  }
+}
+
+function openModelModal() {
+  const list = $('modelOptions');
+  list.replaceChildren();
+  S.slots.forEach(s => {
+    const on = S.slot === s.id;
+    const b = el('button', 'w-full text-left p-3 rounded-xl border transition-all cursor-pointer ' +
+      (on ? 'border-[#ff2740] bg-[#ff2740]/12' : 'border-white/[0.08] bg-white/[0.02] hover:border-white/20'));
+    const top = el('div', 'flex items-center justify-between gap-2');
+    top.append(el('span', 'text-xs font-semibold text-white', s.label));
+    if (on) top.append(el('span', 'mono text-[10px] text-emerald-400', 'ACTIVE'));
+    b.append(top, el('div', 'mono text-[10.5px] text-slate-400 mt-0.5', s.model));
+    b.onclick = async () => {
+      try {
+        const d = await apiPost('/api/mod/model', { slot: s.id });
+        S.slot = d.slot;
+        S.active = d.active;
+        syncModelChip();
+        hideBackdrop('modelModal');
+        toast('Model: ' + d.active.model);
+      } catch (e) { toast(e.message, true); }
+    };
+    list.append(b);
+  });
+  showBackdrop('modelModal');
+}
+
+function openScopeModal() {
+  const list = $('scopeList');
+  list.replaceChildren();
+  const addOpt = (label, val) => {
+    const on = S.scope === val;
+    const b = el('button', 'w-full text-left px-3 py-2 rounded-xl border text-xs transition-all cursor-pointer truncate ' +
+      (on ? 'border-[#ff2740] bg-[#ff2740]/12 text-white font-semibold' : 'border-white/[0.07] bg-white/[0.02] text-slate-300 hover:border-white/20'), label);
+    b.onclick = () => {
+      S.scope = val;
+      $('scopeLabel').textContent = val ? label : 'Entire Site';
+      hideBackdrop('scopeModal');
+    };
+    list.append(b);
+  };
+  addOpt('Entire Site (Auto-detect)', '');
+  (S.files || []).slice(0, 25).forEach(f => addOpt('File: ' + f.path, 'File: ' + f.path));
+  (S.sections.headings || []).slice(0, 12).forEach(h => addOpt(`${h.tag.toUpperCase()}: ${h.text}`, `Section (${h.tag}): ${h.text}`));
+  (S.sections.forms || []).forEach((fm, i) => addOpt(`Form #${i + 1}: ${fm.method} ${fm.action}`, `Form #${i + 1}: ${fm.method} ${fm.action}`));
+  (S.sections.links || []).slice(0, 25).forEach(u => addOpt('URL: ' + u, 'Extracted URL: ' + u));
+  showBackdrop('scopeModal');
+}
+
+/* Events */
+$('siteSwitcherBtn').onclick = () => showBackdrop('siteDrawer');
+$('menuBtn').onclick = () => showBackdrop('menuModal');
+$('modelChip').onclick = openModelModal;
+$('scopeChip').onclick = openScopeModal;
+$('sendBtn').onclick = runModify;
+$('promptInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    runModify();
+  }
+});
+
+$('reloadPreviewBtn').onclick = () => syncPreview(true);
+$('openPreviewTabBtn').onclick = () => S.previewUrl ? window.open(S.previewUrl, '_blank') : toast('No site loaded', true);
+
+$('exportBtn').onclick = async () => {
+  if (!S.id) return toast('Select a site first', true);
+  try {
+    const d = await apiPost('/api/mod/download', { id: S.id });
+    $('exportPath').textContent = d.saved_to;
+    $('exportZip').href = d.dl_url;
+    showBackdrop('exportModal');
+  } catch (e) { toast(e.message, true); }
+};
+
+$('saveKeyBtn').onclick = async () => {
+  try {
+    await apiPost('/api/mod/key', { key: $('groqKeyInp').value });
+    S.hasKey = true;
+    $('groqKeyInp').value = '';
+    toast('API key saved');
+    hideBackdrop('menuModal');
+  } catch (e) { toast(e.message, true); }
+};
+
+$('useCustomModelBtn').onclick = async () => {
+  const m = $('customModelInp').value.trim();
+  if (!m) return;
+  try {
+    const d = await apiPost('/api/mod/model', { slot: 'custom', custom: { model: m } });
+    S.slot = d.slot;
+    S.active = d.active;
+    syncModelChip();
+    hideBackdrop('modelModal');
+    toast('Model: ' + m);
+  } catch (e) { toast(e.message, true); }
+};
+
+$('mUndoBtn').onclick = async () => {
+  if (!S.id) return toast('Select a site first', true);
+  try {
+    const d = await apiPost('/api/mod/undo', { id: S.id });
+    hideBackdrop('menuModal');
+    if (d.reverted && d.reverted.length) {
+      S.files = d.files;
+      renderDrawerFiles(S.files);
+      renderHistory(d.history);
+      syncPreview(true);
+      toast('Reverted: ' + d.reverted.join(', '));
+    } else toast('Nothing to undo', true);
+  } catch (e) { toast(e.message, true); }
+};
+
+$('mResetBtn').onclick = async () => {
+  if (!S.id) return toast('Select a site first', true);
+  if (!confirm('Restore original extracted site and remove all edits?')) return;
+  try {
+    const d = await apiPost('/api/mod/reset', { id: S.id });
+    hideBackdrop('menuModal');
+    S.files = d.files;
+    renderDrawerFiles(S.files);
+    renderHistory([]);
+    renderDiffs([], 0, false);
+    syncPreview(true);
+    toast('Original site restored');
+  } catch (e) { toast(e.message, true); }
+};
+
+$('mClearBtn').onclick = async () => {
+  if (!S.id) return;
+  try {
+    await apiPost('/api/mod/clear', { id: S.id });
+    hideBackdrop('menuModal');
+    renderHistory([]);
+    toast('Chat cleared');
+  } catch (e) { toast(e.message, true); }
+};
+
+const qsId = new URLSearchParams(location.search).get('id') || '';
+initSites(qsId);
+</script>
+</body>
+</html>
+

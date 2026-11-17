@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HEX REA // HTML Recon Terminal</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/codemirror.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/theme/dracula.min.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<script>
+tailwind.config = { theme: { extend: { fontFamily: {
+  mono: ['JetBrains Mono', 'ui-monospace', 'monospace'],
+  sans: ['Inter', 'system-ui', 'sans-serif'] } } } }
+</script>
+<style>
+:root{--bg:#06080c;--panel:#0a0d13;--card:#0f131b;--line:rgba(255,255,255,.08);--red:#ff2740;--red-dim:rgba(255,39,64,.14);--mute:#6b7689}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:#e5e9f0;font-family:Inter,system-ui,sans-serif;overflow:hidden;display:flex;flex-direction:column}
+.mono{font-family:'JetBrains Mono',ui-monospace,monospace}
+
+/* CodeMirror */
+.CodeMirror{height:100%!important;font-family:'JetBrains Mono',monospace!important;font-size:12.5px;line-height:1.6;background:#090c12!important}
+.CodeMirror-gutters{background:#070a0f!important;border-right:1px solid var(--line)!important}
+.CodeMirror-linenumber{color:#4a5568!important}
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-thumb{background:#1c2433;border-radius:9px}
+::-webkit-scrollbar-track{background:transparent}
+
+/* ---------- layout: three panes, one visible on phones ---------- */
+main{flex:1 1 0;min-height:0;display:flex;flex-direction:column;position:relative}
+.pane{display:none;flex-direction:column;min-height:0;min-width:0;flex:1 1 0}
+@media (max-width:767px){
+  main[data-view=source] .pane-source,main[data-view=preview] .pane-preview,main[data-view=analysis] .pane-analysis{display:flex}
+}
+@media (min-width:768px){
+  main{flex-direction:row}
+  main[data-left=source] .pane-source,main[data-left=preview] .pane-preview{display:flex}
+  .pane-analysis{display:flex;flex:none;width:430px;border-left:1px solid var(--line)}
+}
+@media (min-width:1280px){.pane-analysis{width:480px}}
+
+/* ---------- analysis pane ---------- */
+.tabs{display:flex;gap:6px;overflow-x:auto;padding:8px 10px;border-bottom:1px solid var(--line);scrollbar-width:none;flex:none;scroll-snap-type:x proximity}
+.tabs::-webkit-scrollbar{display:none}
+.tab{flex:none;scroll-snap-align:start;font:500 12px Inter,sans-serif;color:#9aa5b8;padding:6px 12px;border-radius:99px;border:1px solid var(--line);background:rgba(255,255,255,.03);display:flex;gap:6px;align-items:center;white-space:nowrap}
+.tab.on{color:#fff;background:var(--red);border-color:var(--red)}
+.tab .n{font:500 10px 'JetBrains Mono',monospace;opacity:.75}
+.scroll{flex:1 1 0;min-height:0;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;padding:12px;display:flex;flex-direction:column;gap:10px}
+.scroll>*{flex:none}
+
+details.card{background:var(--card);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+details.card[open]{border-color:rgba(255,39,64,.28)}
+summary.cs{list-style:none;cursor:pointer;display:flex;align-items:center;gap:10px;padding:11px 13px;user-select:none;-webkit-tap-highlight-color:transparent}
+summary.cs::-webkit-details-marker{display:none}
+.chev{width:7px;height:7px;border-right:2px solid var(--red);border-bottom:2px solid var(--red);transform:rotate(-45deg);transition:transform .15s}
+details[open]>summary .chev{transform:rotate(45deg)}
+.ct{font-size:13px;font-weight:600;flex:1}
+.cb{font:500 10px 'JetBrains Mono',monospace;color:var(--mute);background:rgba(255,255,255,.06);padding:2px 7px;border-radius:99px}
+.cbody{padding:2px 13px 13px;border-top:1px solid var(--line)}
+
+.tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.tile{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 11px}
+.tile .l{font-size:10px;color:var(--mute);text-transform:uppercase;letter-spacing:.06em}
+.tile .v{font:600 15px 'JetBrains Mono',monospace;margin-top:3px;word-break:break-all}
+.good{color:#34d399}.warn{color:#fbbf24}.bad{color:#ff5c70}
+
+.kv{display:grid;grid-template-columns:92px 1fr;gap:10px;padding:7px 0;border-bottom:1px dashed rgba(255,255,255,.06);font-size:12px}
+.kv:last-child{border-bottom:0}
+.kv>.k{color:var(--mute);font-size:11px;word-break:break-word}
+.copy{cursor:pointer;word-break:break-all;border-radius:4px;transition:background .12s;-webkit-tap-highlight-color:transparent}
+.copy:active,.copy:hover{background:var(--red-dim);color:#fff}
+.irow{display:flex;align-items:stretch;gap:4px;margin-top:4px}
+.item{flex:1;min-width:0;text-align:left;font:400 11.5px 'JetBrains Mono',monospace;color:#8fc7ff;padding:7px 9px;background:rgba(255,255,255,.03);border:1px solid transparent;border-radius:6px;word-break:break-all}
+.item:active,.item:hover{background:var(--red-dim);border-color:var(--red-dim);color:#fff}
+.act{flex:none;width:34px;font:600 12px 'JetBrains Mono',monospace;color:#cbd5e1;background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:6px}
+.act:active,.act:hover{background:var(--red);color:#fff;border-color:var(--red)}
+.sub{font:600 10px 'JetBrains Mono',monospace;color:var(--red);margin:12px 0 2px;letter-spacing:.05em}
+.note{font-size:12px;color:var(--mute);padding-top:10px;line-height:1.5}
+.badge{display:inline-block;font:500 11px 'JetBrains Mono',monospace;padding:3px 9px;border-radius:6px;border:1px solid}
+.b-srv{color:#fbbf24;border-color:rgba(251,191,36,.3);background:rgba(251,191,36,.08)}
+.b-cf{color:#fb923c;border-color:rgba(251,146,60,.3);background:rgba(251,146,60,.08)}
+.b-wp{color:#60a5fa;border-color:rgba(96,165,250,.3);background:rgba(96,165,250,.08)}
+.b-next{color:#f1f5f9;border-color:rgba(241,245,249,.3);background:rgba(241,245,249,.08)}
+.b-react{color:#22d3ee;border-color:rgba(34,211,238,.3);background:rgba(34,211,238,.08)}
+.b-vue{color:#34d399;border-color:rgba(52,211,153,.3);background:rgba(52,211,153,.08)}
+.b-gen{color:#c4b5fd;border-color:rgba(196,181,253,.3);background:rgba(196,181,253,.08)}
+.b-ok{color:#34d399;border-color:rgba(52,211,153,.3);background:rgba(52,211,153,.08)}
+.b-no{color:#ff5c70;border-color:rgba(255,39,64,.35);background:rgba(255,39,64,.08)}
+.chip{font:500 11px 'JetBrains Mono',monospace;padding:4px 10px;border-radius:99px;border:1px solid var(--line);background:rgba(255,255,255,.03);color:#9aa5b8;white-space:nowrap}
+.chip.on{background:var(--red-dim);border-color:var(--red);color:#fff}
+.inp{width:100%;background:#04060a;border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:8px 10px;font:12px 'JetBrains Mono',monospace;color:#e5e9f0}
+.inp:focus{border-color:rgba(255,39,64,.7);outline:none}
+.mini{font:500 11px 'JetBrains Mono',monospace;padding:5px 10px;border-radius:6px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04);color:#cbd5e1}
+.mini:hover,.mini:active{background:rgba(255,255,255,.09)}
+
+/* probes */
+.probe{display:flex;align-items:center;gap:10px;flex:1;min-width:0;text-align:left;padding:8px 10px;border-radius:7px;border:1px solid var(--line);background:rgba(255,255,255,.025);font:12px 'JetBrains Mono',monospace}
+.probe .code{font-weight:700;min-width:32px}.probe .path{flex:1;word-break:break-all}.probe .nt{font-size:10px;color:var(--mute)}
+.p-200{background:rgba(255,39,64,.17);border-color:rgba(255,39,64,.7);color:#ff6477}.p-200 .code{color:#ff2740}
+.p-unv{opacity:.7;border-style:dashed}.p-30x .code{color:#fbbf24}.p-40x .code{color:#a3a3a3}
+pre.body{font:11px 'JetBrains Mono',monospace;white-space:pre-wrap;word-break:break-all;color:#aab4c5;background:#080b10;border:1px solid var(--line);border-radius:6px;padding:8px;margin-top:6px;max-height:200px;overflow:auto}
+
+/* preview */
+#frameWrap{position:relative;flex:1 1 0;min-height:0;background:#fff}
+#frame{width:100%;height:100%;border:0;background:#fff;display:none}
+#frameEmpty{position:absolute;inset:0;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px}
+#frameBusy{position:absolute;top:0;left:0;right:0;height:3px;background:var(--red);display:none;animation:busy 1s linear infinite;transform-origin:left}
+@keyframes busy{0%{transform:scaleX(0)}100%{transform:scaleX(1)}}
+
+/* loader + sheet */
+.overlay{position:fixed;inset:0;z-index:50;display:none;align-items:center;justify-content:center;padding:20px;background:rgba(4,6,9,.88);backdrop-filter:blur(6px)}
+.overlay.show{display:flex}
+.box{width:100%;max-width:420px;border:1px solid rgba(255,255,255,.12);border-radius:14px;background:#0c1017;padding:18px}
+.bar{height:6px;border-radius:9px;background:#1a2130;overflow:hidden}.bar>i{display:block;height:100%;width:0;background:var(--red);border-radius:9px;transition:width .4s}
+.log{font:10.5px 'JetBrains Mono',monospace;color:#7d8aa0;background:#06080c;border:1px solid var(--line);border-radius:8px;padding:8px;height:120px;overflow:auto;white-space:pre-wrap;word-break:break-all}
+#toast{transition:transform .25s,opacity .25s}
+button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible{outline:2px solid var(--red);outline-offset:1px}
+@media (prefers-reduced-motion:reduce){#frameBusy{animation:none}}
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<header class="flex-none border-b border-white/[0.08] bg-[#080b10] px-3 py-2.5 md:px-5 flex flex-col md:flex-row md:items-center gap-2.5 md:gap-5">
+  <div class="flex items-center gap-2.5">
+    <span class="w-2 h-2 rounded-full bg-[#ff2740] shadow-[0_0_10px_#ff2740]"></span>
+    <span class="mono font-bold tracking-wider text-sm">HEX<span class="text-[#ff2740]"> REA</span></span>
+    <span class="mono text-[10px] text-slate-500">HTML Recon Terminal</span>
+  </div>
+  <div class="flex flex-1 gap-2 md:max-w-3xl">
+    <input id="urlInput" type="text" inputmode="url" autocapitalize="off" autocorrect="off" spellcheck="false"
+      placeholder="target URL, e.g. example.com" class="inp !text-sm flex-1 min-w-0">
+    <button id="extractBtn" class="mono flex-none bg-[#ff2740] hover:bg-[#ff4258] active:scale-[.98] disabled:opacity-50 text-white text-xs md:text-sm font-bold tracking-wider px-3.5 py-2 rounded-lg">EXTRACT</button>
+    <button id="playBtn" class="mono flex-none border border-[#ff2740] text-[#ff4258] hover:bg-[#ff2740] hover:text-white active:scale-[.98] text-xs md:text-sm font-bold tracking-wider px-3.5 py-2 rounded-lg">▶ PLAY</button>
+  </div>
+</header>
+
+<!-- SESSION BAR: path explorer + modify + download -->
+<div id="sessBar" class="hidden flex-none border-b border-white/[0.08] bg-[#090c12] px-3 py-2 md:px-5 flex flex-wrap items-center gap-2">
+  <span id="hostTag" class="mono text-[11px] text-slate-500 hidden sm:inline truncate max-w-[180px]"></span>
+  <input id="pathInput" class="inp flex-1 min-w-[140px]" placeholder="path: admin, login, about.html, /css/app.css" autocapitalize="off" autocorrect="off" spellcheck="false">
+  <button id="goCode" title="Fetch this path and show its code" class="mini flex-none">&lt;/&gt; Code</button>
+  <button id="goPlay" title="Fetch this path and play it" class="mini flex-none">▶ Play</button>
+  <button id="modBtn" title="Send this site to Terminal REA Modifier" class="mini flex-none !border-emerald-500/40 !bg-emerald-500/15 !text-emerald-300 hover:!bg-emerald-500/25">✎ Modify</button>
+  <button id="dlBtn" title="Download everything" class="mini flex-none !bg-[#ff2740] !border-[#ff2740] !text-white">⬇ Save</button>
+</div>
+
+<!-- MOBILE NAV -->
+<nav class="md:hidden flex-none grid grid-cols-3 gap-1 p-1 border-b border-white/[0.08] bg-[#080b10]">
+  <button data-nav="source" class="navb py-1.5 text-xs font-medium rounded-md">Code</button>
+  <button data-nav="preview" class="navb py-1.5 text-xs font-medium rounded-md">Preview</button>
+  <button data-nav="analysis" class="navb py-1.5 text-xs font-medium rounded-md">Analysis</button>
+</nav>
+
+<main data-view="source" data-left="source">
+
+  <!-- CODE -->
+  <section class="pane pane-source">
+    <div class="flex-none flex items-center justify-between gap-2 px-3 py-2 border-b border-white/[0.07] bg-[#090c12]">
+      <div class="flex items-center gap-2 min-w-0">
+        <div class="hidden md:flex rounded-md overflow-hidden border border-white/10 mr-1">
+          <button data-nav="source" class="navb mono text-[11px] px-2.5 py-1">Code</button>
+          <button data-nav="preview" class="navb mono text-[11px] px-2.5 py-1">Preview</button>
+        </div>
+        <span id="fileName" class="mono text-[11px] font-medium text-slate-300 truncate">source.html</span>
+        <span id="fileSize" class="mono text-[10px] px-2 py-0.5 rounded-full bg-white/[0.05] text-slate-400 flex-none">0</span>
+      </div>
+      <div class="flex gap-1.5 flex-none">
+        <button id="wrapBtn" class="mini">Wrap</button>
+        <button id="copyBtn" class="mini">Copy</button>
+        <button id="saveBtn" class="mini">Save</button>
+      </div>
+    </div>
+    <div class="flex-1 min-h-0 relative"><textarea id="editor"></textarea></div>
+  </section>
+
+  <!-- PREVIEW -->
+  <section class="pane pane-preview">
+    <div class="flex-none flex items-center justify-between gap-2 px-3 py-2 border-b border-white/[0.07] bg-[#090c12]">
+      <div class="flex items-center gap-2 min-w-0">
+        <div class="hidden md:flex rounded-md overflow-hidden border border-white/10 mr-1">
+          <button data-nav="source" class="navb mono text-[11px] px-2.5 py-1">Code</button>
+          <button data-nav="preview" class="navb mono text-[11px] px-2.5 py-1">Preview</button>
+        </div>
+        <span class="mono text-[11px] text-slate-400 truncate" id="frameLabel">Local mirror · not the live site</span>
+      </div>
+      <div class="flex gap-1.5 flex-none">
+        <button id="reloadBtn" class="mini">↻</button>
+        <button id="viewCodeBtn" class="mini">&lt;/&gt; This page</button>
+        <button id="newTabBtn" class="mini">Open ↗</button>
+      </div>
+    </div>
+    <div id="frameWrap">
+      <div id="frameBusy"></div>
+      <iframe id="frame" title="Site preview" sandbox="allow-scripts allow-same-origin allow-forms allow-modals" referrerpolicy="no-referrer"></iframe>
+      <div id="frameEmpty">
+        <div class="text-4xl text-[#ff2740] mb-2">▶</div>
+        <p class="text-sm font-medium text-slate-200">Nothing playing</p>
+        <p class="text-xs text-slate-500 mt-1.5 max-w-[260px]">Press PLAY to run the site from the extracted copy. Links inside it keep working; type a path above to jump anywhere.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ANALYSIS -->
+  <aside class="pane pane-analysis bg-[#080b10]">
+    <div class="flex-none flex items-center justify-between px-4 pt-3 pb-1">
+      <h2 class="text-sm font-semibold">Deep Analysis</h2>
+      <span id="statusPill" class="hidden mono text-[10px] px-2 py-0.5 rounded-full border"></span>
+    </div>
+    <div id="tabs" class="tabs" role="tablist"></div>
+    <div id="content" class="scroll">
+      <div class="h-full min-h-[240px] flex flex-col items-center justify-center text-center px-6">
+        <p class="text-sm font-medium text-slate-300">Nothing extracted yet</p>
+        <p class="text-xs text-slate-500 mt-1.5 max-w-[250px]">Enter a URL and tap EXTRACT for tech stack, headers, TLS, assets, probes and more.</p>
+      </div>
+    </div>
+  </aside>
+</main>
+
+<!-- EXTRACT LOADER -->
+<div id="loader" class="overlay" role="status" aria-live="polite">
+  <div class="box">
+    <div class="flex justify-between mono text-xs mb-3"><span class="text-[#ff2740] font-bold">RECON ACTIVE</span><span id="loaderPct" class="text-slate-400">0%</span></div>
+    <div class="bar mb-3"><i id="lbar"></i></div>
+    <div id="loaderMsg" class="mono text-xs text-slate-300">Connecting to host...</div>
+  </div>
+</div>
+
+<!-- DOWNLOAD SHEET -->
+<div id="dlSheet" class="overlay">
+  <div class="box">
+    <div class="flex items-center justify-between mb-3">
+      <h3 class="text-sm font-semibold">Download everything</h3>
+      <button id="dlClose" class="mini">✕</button>
+    </div>
+    <div id="dlSetup">
+      <p class="text-xs text-slate-400 leading-relaxed mb-3">Saves pages, images, audio, video, CSS, JS and fonts with links rewritten so the copy opens offline. Output goes to your Downloads folder as a folder and a ZIP.</p>
+      <label class="text-[11px] text-slate-500 block mb-1">Pages to crawl</label>
+      <select id="dlPages" class="inp mb-3">
+        <option value="1">This page only (+ all its files)</option>
+        <option value="10">Up to 10 pages</option>
+        <option value="25">Up to 25 pages</option>
+        <option value="50">Up to 50 pages</option>
+        <option value="100">Up to 100 pages</option>
+        <option value="200">Up to 200 pages</option>
+      </select>
+      <label class="flex items-center gap-2 text-xs text-slate-300 mb-4"><input id="dlThird" type="checkbox" checked class="accent-[#ff2740]"> Include third-party files (CDN fonts, libraries)</label>
+      <button id="dlStart" class="mono w-full bg-[#ff2740] hover:bg-[#ff4258] text-white font-bold tracking-wider text-sm py-2.5 rounded-lg">START DOWNLOAD</button>
+    </div>
+    <div id="dlRun" class="hidden">
+      <div class="flex justify-between mono text-xs mb-2"><span id="dlPhase" class="text-[#ff2740] font-bold truncate pr-2">Starting</span><span id="dlPct" class="text-slate-400">0%</span></div>
+      <div class="bar mb-3"><i id="dlBar"></i></div>
+      <div class="grid grid-cols-4 gap-2 mb-3 text-center">
+        <div class="tile !p-2"><div class="l">Files</div><div id="dlFiles" class="v !text-[13px]">0</div></div>
+        <div class="tile !p-2"><div class="l">Size</div><div id="dlSize" class="v !text-[13px]">0</div></div>
+        <div class="tile !p-2"><div class="l">Pages</div><div id="dlPg" class="v !text-[13px]">0</div></div>
+        <div class="tile !p-2"><div class="l">Errors</div><div id="dlErr" class="v !text-[13px]">0</div></div>
+      </div>
+      <div id="dlLog" class="log mb-3"></div>
+      <div id="dlDone" class="hidden mb-3">
+        <p class="text-xs text-emerald-400 font-medium mb-1">Saved ✓</p>
+        <button id="dlPath" class="item !w-full mb-1.5"></button>
+        <p id="dlWarn" class="hidden text-[11px] text-amber-400 mb-2"></p>
+        <a id="dlZip" class="mono block text-center w-full border border-[#ff2740] text-[#ff4258] text-xs font-bold py-2 rounded-lg" href="#">Download ZIP via browser</a>
+      </div>
+      <button id="dlCancel" class="mini w-full">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODIFY HANDOFF SHEET -->
+<div id="modSheet" class="overlay">
+  <div class="box">
+    <div class="flex items-center justify-between mb-3">
+      <h3 class="text-sm font-semibold text-emerald-400">✎ REA Terminal Modifier Ready</h3>
+      <button id="modClose" class="mini">✕</button>
+    </div>
+    <p class="text-xs text-slate-300 leading-relaxed mb-3">
+      <span id="modSite" class="mono text-emerald-300"></span> has been sent to your Termux terminal with all extracted code and analysis.
+    </p>
+    <p class="text-xs text-slate-400 leading-relaxed mb-4">
+      Switch back to the <strong class="text-white">Termux</strong> app now and press <span class="mono text-white">y</span> to enter the AI modifier.
+    </p>
+    <button id="modOk" class="mono w-full bg-emerald-500 hover:bg-emerald-400 text-black font-bold tracking-wider text-xs py-2.5 rounded-lg">OK, SWITCHING TO TERMUX</button>
+  </div>
+</div>
+
+<div id="toast" class="fixed bottom-4 left-1/2 -translate-x-1/2 translate-y-16 opacity-0 pointer-events-none z-[60]">
+  <div class="mono flex items-center gap-2 px-3.5 py-2 rounded-lg border border-white/10 bg-[#141a25] text-xs shadow-xl max-w-[90vw]">
+    <span id="toastDot" class="w-2 h-2 rounded-full bg-[#ff2740] flex-none"></span><span id="toastMsg" class="truncate"></span>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/codemirror.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/mode/xml/xml.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/mode/javascript/javascript.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/mode/css/css.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/mode/htmlmixed/htmlmixed.min.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+/* Everything from the target goes through textContent, never innerHTML. */
+function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+const fmtB = n => n < 1024 ? n + ' B' : n < 1048576 ? (n / 1024).toFixed(1) + ' KB' : (n / 1048576).toFixed(1) + ' MB';
+const short = (u, n = 70) => u.length > n ? u.slice(0, n - 1) + '…' : u;
+
+const editor = CodeMirror.fromTextArea($('editor'), { mode: 'htmlmixed', theme: 'dracula', lineNumbers: true, lineWrapping: true, readOnly: true });
+const S = { sid: null, netloc: '', a: null, local: '', tab: 'overview', wrap: true, host: 'source', curFile: 'source.html' };
+
+/* ---------- toast / clipboard / api ---------- */
+let toastT;
+function toast(msg, err) {
+  $('toastMsg').textContent = msg; $('toastDot').style.background = err ? '#fbbf24' : '#ff2740';
+  const t = $('toast'); t.classList.remove('translate-y-16', 'opacity-0');
+  clearTimeout(toastT); toastT = setTimeout(() => t.classList.add('translate-y-16', 'opacity-0'), 2200);
+}
+async function copyText(text, label) {
+  try { await navigator.clipboard.writeText(text); }
+  catch {
+    const ta = el('textarea'); ta.value = text; ta.style.cssText = 'position:fixed;opacity:0;top:0';
+    document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); } catch { return toast('Copy failed', true); }
+    ta.remove();
+  }
+  toast('Copied ' + (label || short(text, 40)));
+}
+async function api(path, body) {
+  const res = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Hex': '1' }, body: JSON.stringify(body) });
+  const d = await res.json();
+  if (!d.success) throw new Error(d.error || 'Request failed');
+  return d;
+}
+function copyable(tag, cls, text, val) {
+  const e = el(tag, cls, text); e.classList.add('copy'); e.title = 'Tap to copy';
+  e.addEventListener('click', () => copyText(val ?? text)); return e;
+}
+
+/* ---------- views ---------- */
+function setView(v) {
+  const m = document.querySelector('main'); m.dataset.view = v;
+  if (v === 'source' || v === 'preview') m.dataset.left = v;
+  document.querySelectorAll('.navb').forEach(b => {
+    const on = b.dataset.nav === v || (v === 'analysis' ? false : false);
+    const act = b.dataset.nav === (window.innerWidth < 768 ? v : m.dataset.left);
+    b.classList.toggle('bg-white/10', act); b.classList.toggle('text-white', act); b.classList.toggle('text-slate-400', !act);
+  });
+  if (v === 'source') setTimeout(() => editor.refresh(), 20);
+}
+document.querySelectorAll('.navb').forEach(b => b.onclick = () => setView(b.dataset.nav));
+addEventListener('resize', () => setView(document.querySelector('main').dataset.view));
+
+/* ---------- code toolbar ---------- */
+$('wrapBtn').onclick = () => { S.wrap = !S.wrap; editor.setOption('lineWrapping', S.wrap); $('wrapBtn').textContent = S.wrap ? 'Wrap' : 'No wrap'; };
+$('copyBtn').onclick = () => editor.getValue() ? copyText(editor.getValue(), 'source') : toast('No source yet', true);
+$('saveBtn').onclick = () => {
+  const v = editor.getValue(); if (!v) return toast('No source yet', true);
+  const a = el('a'); a.href = URL.createObjectURL(new Blob([v], { type: 'text/plain;charset=utf-8' }));
+  a.download = S.curFile.replace(/[^\w.-]+/g, '_'); a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  toast('Saved ' + a.download);
+};
+function showSource(text, name) {
+  editor.setValue(text || ''); editor.scrollTo(0, 0); S.curFile = name;
+  $('fileName').textContent = name; $('fileSize').textContent = fmtB(new Blob([text || '']).size) + ' · ' + editor.lineCount().toLocaleString() + ' lines';
+  setTimeout(() => editor.refresh(), 20);
+}
+
+/* ---------- preview ---------- */
+const frame = $('frame');
+function playUrl(u) {
+  S.local = u; $('frameEmpty').style.display = 'none'; frame.style.display = 'block';
+  $('frameBusy').style.display = 'block'; frame.src = u; setView('preview');
+}
+frame.addEventListener('load', () => { $('frameBusy').style.display = 'none'; });
+$('reloadBtn').onclick = () => { if (S.local) { const u = S.local; frame.src = 'about:blank'; setTimeout(() => playUrl(u), 30); } };
+$('newTabBtn').onclick = () => S.local ? window.open(S.local, '_blank') : toast('Nothing playing', true);
+$('viewCodeBtn').onclick = () => $('pathInput').value ? openPath($('pathInput').value, 'code') : toast('Nothing playing', true);
+addEventListener('message', e => {
+  if (e.source !== frame.contentWindow) return;
+  const d = e.data || {};
+  if (d.hexrea === 'toast') toast(d.msg, true);
+  if (d.hexrea === 'nav') {
+    const m = String(d.path || '').match(/^\/site\/[^/]+\/([^/]+)(\/.*)?$/);
+    if (m) { $('pathInput').value = (m[1] === S.netloc ? '' : m[1]) + (m[2] || '/'); $('frameLabel').textContent = 'Local mirror · ' + m[1] + (m[2] || '/'); }
+  }
+});
+
+/* ---------- path explorer ---------- */
+async function openPath(target, mode) {
+  if (!S.sid) return toast('Extract a site first', true);
+  target = (target || '').trim() || '/';
+  const btns = [$('goCode'), $('goPlay')]; btns.forEach(b => b.disabled = true);
+  toast('Fetching ' + short(target, 40) + '…');
+  try {
+    const d = await api('/api/page', { sid: S.sid, path: target });
+    const nm = (d.display_path.replace(/[^\w.-]+/g, '_').replace(/^_+|_+$/g, '') || 'index') + (/\.\w{2,5}$/.test(d.display_path) ? '' : '.html');
+    showSource(d.is_text ? d.source : `/* ${d.content_type || 'binary'} · ${fmtB(d.bytes)}\n   Binary file: use ▶ Play to view or hear it. */`, nm);
+    $('pathInput').value = d.display_path;
+    if (d.status >= 400) toast(`${d.status} ${d.reason}: showing the page the server returned`, true);
+    if (mode === 'play') playUrl(d.local_url); else setView('source');
+  } catch (e) { toast(e.message, true); }
+  btns.forEach(b => b.disabled = false);
+}
+$('goCode').onclick = () => openPath($('pathInput').value, 'code');
+$('goPlay').onclick = () => openPath($('pathInput').value, 'play');
+$('pathInput').addEventListener('keydown', e => { if (e.key === 'Enter') openPath($('pathInput').value, 'play'); });
+
+/* ---------- analysis rendering ---------- */
+const TABS = [['overview', 'Overview'], ['tech', 'Tech'], ['network', 'Network'], ['security', 'Security'], ['probes', 'Probes'],
+  ['domain', 'Domain'], ['assets', 'Assets'], ['forms', 'Forms'], ['links', 'Links'], ['intel', 'Intel']];
+const counts = a => ({ tech: a.tech.length, probes: a.probes.length, assets: a.assets.length, forms: a.forms.length, links: a.links.length,
+  security: a.security.filter(s => s.present).length + '/' + a.security.length });
+
+function buildTabs() {
+  const box = $('tabs'); box.replaceChildren(); const c = counts(S.a);
+  TABS.forEach(([id, label]) => {
+    const b = el('button', 'tab' + (id === S.tab ? ' on' : ''), label); b.setAttribute('role', 'tab');
+    if (c[id] != null) b.append(el('span', 'n', String(c[id])));
+    b.onclick = () => { S.tab = id; buildTabs(); renderTab(); $('content').scrollTop = 0; };
+    box.append(b);
+    if (id === S.tab) setTimeout(() => b.scrollIntoView({ inline: 'center', block: 'nearest' }), 0);
+  });
+}
+function sec(title, count, open = true) {
+  const d = el('details', 'card'); d.open = open;
+  const s = el('summary', 'cs'); s.append(el('span', 'chev'), el('span', 'ct', title));
+  if (count != null) s.append(el('span', 'cb', String(count)));
+  const body = el('div', 'cbody'); d.append(s, body); $('content').append(d); return body;
+}
+function kvs(body, rows) {
+  rows.forEach(([k, v, cv]) => { if (v == null || v === '') return;
+    const r = el('div', 'kv'); r.append(el('span', 'k mono', k), copyable('span', 'mono', String(v), cv)); body.append(r); });
+}
+function note(body, t) { body.append(el('p', 'note', t)); }
+function tile(parent, l, v, tone) { const t = el('div', 'tile'); t.append(el('div', 'l', l), el('div', 'v ' + (tone || ''), String(v))); parent.append(t); }
+function urlRow(body, url, opts = {}) {
+  const r = el('div', 'irow');
+  r.append(copyable('button', 'item', opts.label || url, url));
+  if (opts.actions !== false) {
+    const c = el('button', 'act', '</>'); c.title = 'View code'; c.onclick = () => openPath(url, 'code');
+    const p = el('button', 'act', '▶'); p.title = 'Play'; p.onclick = () => openPath(url, 'play');
+    r.append(c, p);
+  }
+  body.append(r);
+}
+function plainList(body, arr, empty) { if (!arr.length) return note(body, empty); arr.forEach(u => body.append(Object.assign(copyable('button', 'item !w-full !block mt-1', u), {}))); }
+function techClass(t) {
+  const l = t.toLowerCase();
+  if (/^(server|powered-by):/.test(l)) return 'b-srv'; if (l.startsWith('generator:')) return 'b-gen';
+  if (l.includes('cloudflare')) return 'b-cf'; if (l.includes('wordpress')) return 'b-wp'; if (l.includes('next')) return 'b-next';
+  if (l.includes('react')) return 'b-react'; if (l.includes('vue')) return 'b-vue'; return 'b-gen';
+}
+
+const R = {
+  overview(a) {
+    const g = el('div', 'tiles'); $('content').append(g);
+    tile(g, 'Status', a.status_code, a.status_code < 300 ? 'good' : a.status_code < 400 ? 'warn' : 'bad');
+    tile(g, 'Size', fmtB(a.bytes)); tile(g, 'Time', a.elapsed_ms + 'ms');
+    tile(g, 'Assets', a.assets.length); tile(g, 'Links', a.links.length); tile(g, 'Forms', a.forms.length);
+    let b = sec('Page', null);
+    kvs(b, [['Title', a.title], ['Final URL', a.final_url], ['Type', a.content_type], ['Language', a.lang], ['Canonical', a.canonical],
+      ['Favicon', a.favicon], ['Words', a.words.toLocaleString()], ['Inline JS', a.inline_scripts + ' blocks']]);
+    const m = Object.entries(a.meta);
+    b = sec('Meta tags', m.length, false); m.length ? kvs(b, m) : note(b, 'No meta tags found.');
+    b = sec('Redirect chain', a.redirects.length, a.redirects.length > 0);
+    a.redirects.length ? a.redirects.forEach(r => kvs(b, [[String(r.status), r.url]])) : note(b, 'No redirects. Loaded directly.');
+    b = sec('Headings outline', a.headings.length, false);
+    a.headings.length ? a.headings.forEach(h => kvs(b, [[h.tag.toUpperCase(), h.text]])) : note(b, 'No headings.');
+  },
+  tech(a) {
+    let b = sec('Detected stack', a.tech.length);
+    if (a.tech.length) { const w = el('div', 'flex flex-wrap gap-1.5 pt-3'); a.tech.forEach(t => w.append(copyable('span', 'badge ' + techClass(t), t))); b.append(w); }
+    else note(b, 'No known signatures detected.');
+    const kinds = {}; a.assets.forEach(x => kinds[x.kind] = (kinds[x.kind] || 0) + 1);
+    b = sec('Resource mix', a.assets.length); kvs(b, Object.entries(kinds).sort((x, y) => y[1] - x[1]).map(([k, v]) => [k, v + ' files']));
+    const hosts = {}; a.assets.filter(x => x.third_party).forEach(x => hosts[x.host] = (hosts[x.host] || 0) + 1);
+    const hs = Object.entries(hosts).sort((x, y) => y[1] - x[1]);
+    b = sec('Third-party hosts', hs.length, hs.length > 0);
+    hs.length ? kvs(b, hs.map(([h, n]) => [n + '×', h])) : note(b, 'Everything loads from the site’s own domain.');
+  },
+  network(a) {
+    let b = sec('Server', null);
+    kvs(b, [['IP address', a.dns.join(', ')], ['Final URL', a.final_url]]);
+    b = sec('TLS certificate', null, !!Object.keys(a.tls).length);
+    const t = a.tls;
+    if (!Object.keys(t).length) note(b, 'Not an HTTPS site.');
+    else if (t.Error) note(b, 'Could not read certificate: ' + t.Error);
+    else { kvs(b, [['Protocol', t.Protocol], ['Cipher', t.Cipher], ['Subject', t.Subject], ['Issuer', t.Issuer], ['Valid from', t['Valid from']], ['Valid until', t['Valid until']]]);
+      if (t.SAN && t.SAN.length) { b.append(el('div', 'sub', 'ALTERNATIVE NAMES')); plainList(b, t.SAN, ''); } }
+    const h = Object.entries(a.headers);
+    b = sec('Response headers', h.length, false); kvs(b, h.map(([k, v]) => [k, v, k + ': ' + v]));
+    b = sec('Cookies', a.cookies.length, a.cookies.length > 0);
+    if (!a.cookies.length) note(b, 'No cookies set.');
+    a.cookies.forEach(c => kvs(b, [[c.name, c.value || '(empty)', c.name + '=' + c.value], ['flags', [c.domain, c.secure ? 'Secure' : 'not Secure', c.httponly ? 'HttpOnly' : 'not HttpOnly'].filter(Boolean).join(' · ')]]));
+  },
+  security(a) {
+    const ok = a.security.filter(s => s.present).length, g = el('div', 'tiles'); $('content').append(g);
+    tile(g, 'Headers', ok + '/' + a.security.length, ok >= 5 ? 'good' : ok >= 3 ? 'warn' : 'bad');
+    tile(g, 'HTTPS', a.final_url.startsWith('https') ? 'Yes' : 'No', a.final_url.startsWith('https') ? 'good' : 'bad');
+    const mixed = a.final_url.startsWith('https') ? a.assets.filter(x => x.url.startsWith('http:')) : [];
+    tile(g, 'Mixed', mixed.length, mixed.length ? 'bad' : 'good');
+    let b = sec('Security headers', ok + '/' + a.security.length);
+    a.security.forEach(s => { const r = el('div', 'kv'); const bd = el('span', 'badge ' + (s.present ? 'b-ok' : 'b-no'), s.present ? '✓ set' : '✗ missing');
+      const v = el('div'); v.append(el('div', 'text-xs font-medium', s.name), el('div', 'text-[11px] text-slate-500', s.present ? short(s.value, 90) : s.why));
+      r.append(bd, v); b.append(r); });
+    b = sec('Cookie flags', a.cookies.length, a.cookies.length > 0);
+    if (!a.cookies.length) note(b, 'No cookies to audit.');
+    a.cookies.forEach(c => { const issues = [!c.secure && 'no Secure', !c.httponly && 'no HttpOnly'].filter(Boolean);
+      kvs(b, [[c.name, issues.length ? issues.join(', ') : 'Secure + HttpOnly']]); });
+    b = sec('Mixed content', mixed.length, mixed.length > 0);
+    mixed.length ? mixed.forEach(x => urlRow(b, x.url, { actions: false })) : note(b, 'No insecure resources on this HTTPS page.');
+  },
+  probes(a) {
+    const hits = a.probes.filter(p => p.status === 200).length;
+    let b = sec('Path probes', hits ? hits + ' hit' + (hits > 1 ? 's' : '') : a.probes.length);
+    if (!a.probes.length) note(b, 'None of admin, login, robots.txt, sitemap.xml, .env or .git/config responded.');
+    a.probes.forEach(p => {
+      const cls = p.status === 200 ? 'p-200' : p.status < 400 ? 'p-30x' : 'p-40x';
+      const r = el('div', 'irow'); const row = copyable('button', 'probe ' + cls + (p.unverified ? ' p-unv' : ''), '', p.url);
+      row.append(el('span', 'code', String(p.status)), el('span', 'path', p.path));
+      const nt = p.unverified ? 'catch-all?' : p.location ? '→ ' + short(p.location, 32) : p.size != null ? fmtB(p.size) : '';
+      if (nt) row.append(el('span', 'nt', nt)); r.append(row);
+      const c = el('button', 'act', '</>'); c.onclick = () => openPath(p.url, 'code');
+      const pl = el('button', 'act', '▶'); pl.onclick = () => openPath(p.url, 'play'); r.append(c, pl); b.append(r);
+    });
+    if (a.probes.some(p => p.unverified)) note(b, 'Dashed rows: this site returns 200 for random paths too, so those hits are likely false positives.');
+    a.probes.filter(p => p.body).forEach(p => { const d = sec(p.path + ' content', p.sitemap_urls ? p.sitemap_urls.length + ' urls' : null, false);
+      d.append(el('pre', 'body', p.body));
+      if (p.sitemap_urls && p.sitemap_urls.length) { d.append(el('div', 'sub', 'SITEMAP URLS')); p.sitemap_urls.forEach(u => urlRow(d, u)); } });
+  },
+  domain(a) {
+    const r = a.rdap; let b = sec('Registry (RDAP)', null);
+    if (r.Registrar) { kvs(b, [['Domain', r.Domain], ['Registrar', r.Registrar], ['Created', r.Created], ['Updated', r.Updated], ['Expires', r.Expires]]);
+      b.append(el('div', 'sub', 'NAMESERVERS')); plainList(b, r.Nameservers || [], 'None listed.'); }
+    else note(b, 'No RDAP record (IP address, unsupported TLD, or registry unavailable).');
+    b = sec('DNS', a.dns.length); plainList(b, a.dns, 'Could not resolve.');
+  },
+  assets(a) {
+    const kinds = ['all', ...Array.from(new Set(a.assets.map(x => x.kind)))];
+    const bar = el('div', 'flex flex-wrap gap-1.5'); $('content').append(bar);
+    const q = el('input', 'inp'); q.placeholder = 'Filter assets…'; $('content').append(q);
+    const out = el('div'); $('content').append(out);
+    let kind = 'all', lim = 200;
+    const draw = () => {
+      bar.replaceChildren(); kinds.forEach(k => { const n = k === 'all' ? a.assets.length : a.assets.filter(x => x.kind === k).length;
+        const c = el('button', 'chip' + (k === kind ? ' on' : ''), `${k} ${n}`); c.onclick = () => { kind = k; lim = 200; draw(); }; bar.append(c); });
+      out.replaceChildren(); const f = q.value.toLowerCase();
+      const list = a.assets.filter(x => (kind === 'all' || x.kind === kind) && x.url.toLowerCase().includes(f));
+      if (!list.length) return out.append(el('p', 'note', 'No assets match.'));
+      list.slice(0, lim).forEach(x => urlRow(out, x.url, { label: `[${x.kind}] ${x.url}` }));
+      if (list.length > lim) { const m = el('button', 'mini w-full mt-2', `Show more (${list.length - lim} left)`); m.onclick = () => { lim += 300; draw(); }; out.append(m); }
+    };
+    q.oninput = () => { lim = 200; draw(); }; draw();
+  },
+  forms(a) {
+    const b = sec('Forms & inputs', a.forms.length);
+    if (!a.forms.length) note(b, 'No forms found.');
+    a.forms.forEach((f, i) => { b.append(el('div', 'sub', 'FORM ' + (i + 1) + ' · ' + f.method)); urlRow(b, f.action, { actions: false });
+      const w = el('div', 'flex flex-wrap gap-1.5 pt-2'); f.inputs.forEach(x => w.append(el('span', 'badge b-gen', (x.name ? x.name + ':' : '') + x.type)));
+      if (!f.inputs.length) w.append(el('span', 'text-xs text-slate-500', 'No inputs')); b.append(w); });
+  },
+  links(a) {
+    const top = el('div', 'flex gap-2'); $('content').append(top);
+    const q = el('input', 'inp'); q.placeholder = 'Filter paths…'; top.append(q);
+    const all = el('button', 'mini flex-none', 'Copy all'); all.onclick = () => copyText(a.links.join('\n'), a.links.length + ' paths'); top.append(all);
+    const out = el('div'); $('content').append(out);
+    const draw = () => { out.replaceChildren(); const f = q.value.toLowerCase(); const l = a.links.filter(u => u.toLowerCase().includes(f));
+      if (!l.length) return out.append(el('p', 'note', 'No .html / .php / .asp style links on this origin.'));
+      l.forEach(u => urlRow(out, u)); };
+    q.oninput = draw; draw();
+  },
+  intel(a) {
+    const list = (title, arr, empty, fn) => { const b = sec(title, arr.length, arr.length > 0); arr.length ? arr.forEach(fn || (x => b.append(copyable('button', 'item !w-full !block mt-1', x)))) : note(b, empty); return b; };
+    list('API endpoints in code', a.endpoints, 'No endpoints spotted in the HTML or inline scripts.', u => urlRow(sec_last(), u));
+    list('Emails', a.emails, 'None found.'); list('Phone numbers', a.phones, 'None found.');
+    list('Social links', a.social, 'None found.', u => urlRow(sec_last(), u, { actions: false }));
+    list('HTML comments', a.comments, 'No comments.', c => sec_last().append(el('pre', 'body', c)));
+    list('JSON-LD data', a.jsonld, 'None.', c => sec_last().append(el('pre', 'body', c)));
+    function sec_last() { return $('content').lastElementChild.querySelector('.cbody'); }
+  }
+};
+function renderTab() { $('content').replaceChildren(); R[S.tab](S.a); }
+
+/* ---------- extract ---------- */
+const STEPS = ['Connecting to host...', 'Downloading HTML source...', 'Parsing DOM and assets...', 'Fingerprinting tech stack...', 'Reading TLS + DNS...', 'Probing sensitive paths...', 'Querying RDAP registry...'];
+let progT;
+function prog(p, m) { $('lbar').style.width = p + '%'; $('loaderPct').textContent = Math.round(p) + '%'; if (m) $('loaderMsg').textContent = m; }
+async function extract(thenPlay) {
+  const raw = $('urlInput').value.trim();
+  if (!raw) { $('urlInput').focus(); return toast('Enter a target URL first', true); }
+  $('loader').classList.add('show'); $('extractBtn').disabled = true;
+  let i = 0; prog(5, STEPS[0]); clearInterval(progT);
+  progT = setInterval(() => { i = Math.min(i + 1, STEPS.length - 1); prog(Math.min(92, 5 + i * 14), STEPS[i]); }, 1400);
+  try {
+    const d = await api('/api/extract', { url: raw }); clearInterval(progT); prog(100, 'Extraction complete');
+    await new Promise(r => setTimeout(r, 220));
+    S.sid = d.sid; S.netloc = d.netloc; S.a = d.analysis; S.tab = 'overview';
+    try { S.host = new URL(d.analysis.final_url).hostname.replace(/[^\w.-]/g, '_'); } catch { S.host = 'source'; }
+    showSource(d.html, S.host + '.html');
+    const c = d.analysis.status_code, p = $('statusPill'); p.textContent = d.analysis.status;
+    p.className = 'mono text-[10px] px-2 py-0.5 rounded-full border ' + (c < 300 ? 'text-emerald-400 border-emerald-500/30 bg-emerald-500/10' : c < 400 ? 'text-amber-400 border-amber-500/30 bg-amber-500/10' : 'text-[#ff5c70] border-[#ff2740]/40 bg-[#ff2740]/10');
+    $('sessBar').classList.remove('hidden'); $('hostTag').textContent = S.netloc; $('pathInput').value = '/';
+    $('frame').style.display = 'none'; $('frameEmpty').style.display = 'flex'; S.local = d.analysis.local_url;
+    buildTabs(); renderTab();
+    if (thenPlay) playUrl(S.local); else toast('Extracted ' + S.host);
+  } catch (e) {
+    clearInterval(progT); toast(e.message === 'Failed to fetch' ? 'Local server not reachable. Is hex.py running?' : e.message, true);
+  } finally { $('loader').classList.remove('show'); $('extractBtn').disabled = false; }
+}
+$('extractBtn').onclick = () => extract(false);
+$('playBtn').onclick = () => {
+  const typed = $('urlInput').value.trim();
+  if (S.sid && S.local && (!typed || S.a.final_url.includes(typed.replace(/^https?:\/\//, '')) || typed === S.netloc)) playUrl(S.local);
+  else extract(true);
+};
+$('urlInput').addEventListener('keydown', e => { if (e.key === 'Enter') extract(false); });
+
+/* ---------- download sheet ---------- */
+let jobId = null, pollT = null;
+$('dlBtn').onclick = () => { if (!S.sid) return toast('Extract a site first', true); $('dlSheet').classList.add('show'); };
+$('dlClose').onclick = () => $('dlSheet').classList.remove('show');
+$('dlStart').onclick = async () => {
+  try {
+    const d = await api('/api/download', { sid: S.sid, max_pages: +$('dlPages').value, third_party: $('dlThird').checked });
+    jobId = d.job; $('dlSetup').classList.add('hidden'); $('dlRun').classList.remove('hidden'); $('dlDone').classList.add('hidden');
+    $('dlCancel').style.display = ''; clearInterval(pollT); pollT = setInterval(poll, 700); poll();
+  } catch (e) { toast(e.message, true); }
+};
+$('dlCancel').onclick = async () => { try { await api('/api/cancel', { sid: S.sid, job: jobId }); toast('Cancelling…'); } catch (e) { toast(e.message, true); } };
+$('dlPath').onclick = () => copyText($('dlPath').textContent, 'path');
+async function poll() {
+  try {
+    const r = await fetch('/api/job/' + jobId); const j = await r.json(); if (!j.success) throw new Error(j.error);
+    $('dlPhase').textContent = j.phase; $('dlPct').textContent = Math.round(j.pct) + '%'; $('dlBar').style.width = j.pct + '%';
+    $('dlFiles').textContent = j.files; $('dlSize').textContent = fmtB(j.bytes); $('dlPg').textContent = j.pages; $('dlErr').textContent = j.errors;
+    const lg = $('dlLog'); lg.textContent = j.log.join('\n'); lg.scrollTop = lg.scrollHeight;
+    if (j.status !== 'running') {
+      clearInterval(pollT); $('dlCancel').style.display = 'none';
+      if (j.status === 'done') {
+        $('dlDone').classList.remove('hidden'); $('dlPath').textContent = j.saved_to; $('dlZip').href = '/download/' + j.id + '.zip';
+        const w = $('dlWarn'); w.classList.toggle('hidden', !!j.shared);
+        w.textContent = 'Saved inside Termux only. Run termux-setup-storage once, then download again to get it in your file manager.';
+        toast('Download complete');
+      } else if (j.status === 'cancelled') { toast('Cancelled', true); $('dlSetup').classList.remove('hidden'); $('dlRun').classList.add('hidden'); }
+      else toast(j.error || 'Download failed', true);
+    }
+  } catch (e) { clearInterval(pollT); toast(e.message, true); }
+}
+
+/* ---------- modify handoff ---------- */
+$('modClose').onclick = () => $('modSheet').classList.remove('show');
+$('modOk').onclick = () => $('modSheet').classList.remove('show');
+$('modBtn').onclick = async () => {
+  if (!S.sid) return toast('Extract a site first', true);
+  $('modBtn').disabled = true;
+  try {
+    const d = await api('/api/modify', { sid: S.sid });
+    $('modSite').textContent = d.netloc || d.url;
+    $('modSheet').classList.add('show');
+  } catch (e) { toast(e.message, true); }
+  $('modBtn').disabled = false;
+};
+
+setView('source');
+</script>
+</body>
+</html>
+
