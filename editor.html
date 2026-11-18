@@ -139,6 +139,12 @@ button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visi
 </header>
 
 <!-- SESSION BAR: path explorer + modify + download -->
+<div id="leakBanner" class="hidden flex-none border-b border-amber-500/30 bg-amber-500/[0.08] px-3 py-2 md:px-5 flex flex-wrap items-center gap-2">
+  <span class="text-sm">✅</span>
+  <span class="text-xs text-amber-200 font-medium flex-1 min-w-0"><span id="leakBannerCount">0</span> email leak<span id="leakBannerPlural">s</span> found in this site's public code</span>
+  <button id="leakBannerView" class="mini flex-none !text-amber-200 !border-amber-500/40">View</button>
+  <button id="leakBannerHide" class="mini flex-none">Dismiss</button>
+</div>
 <div id="sessBar" class="hidden flex-none border-b border-white/[0.08] bg-[#090c12] px-3 py-2 md:px-5 flex flex-wrap items-center gap-2">
   <span id="hostTag" class="mono text-[11px] text-slate-500 hidden sm:inline truncate max-w-[180px]"></span>
   <input id="pathInput" class="inp flex-1 min-w-[140px]" placeholder="path: admin, login, about.html, /css/app.css" autocapitalize="off" autocorrect="off" spellcheck="false">
@@ -434,6 +440,21 @@ function kvs(body, rows) {
 }
 function note(body, t) { body.append(el('p', 'note', t)); }
 function tile(parent, l, v, tone) { const t = el('div', 'tile'); t.append(el('div', 'l', l), el('div', 'v ' + (tone || ''), String(v))); parent.append(t); }
+function persistAnalysis(field) {
+  if (!S.sid) return;
+  api('/api/update_analysis', { sid: S.sid, field, value: S.a[field] }).catch(e => toast(e.message, true));
+}
+
+function removeFrom(field, value, re) {
+  const i = S.a[field].indexOf(value);
+  if (i === -1) return;
+  S.a[field].splice(i, 1);
+  persistAnalysis(field);
+  buildTabs();
+  if (re) renderTab();
+  renderLeakBanner();
+}
+
 function urlRow(body, url, opts = {}) {
   const r = el('div', 'irow');
   r.append(copyable('button', 'item', opts.label || url, url));
@@ -442,9 +463,24 @@ function urlRow(body, url, opts = {}) {
     const p = el('button', 'act', '▶'); p.title = 'Play'; p.onclick = () => openPath(url, 'play');
     r.append(c, p);
   }
+  if (opts.removeField) {
+    const x = el('button', 'act', '✕'); x.title = 'Remove this URL from the extracted data';
+    x.onclick = () => removeFrom(opts.removeField, url, true);
+    r.append(x);
+  }
   body.append(r);
 }
-function plainList(body, arr, empty) { if (!arr.length) return note(body, empty); arr.forEach(u => body.append(Object.assign(copyable('button', 'item !w-full !block mt-1', u), {}))); }
+function plainList(body, arr, empty, removeField) {
+  if (!arr.length) return note(body, empty);
+  arr.forEach(u => {
+    if (!removeField) { body.append(copyable('button', 'item !w-full !block mt-1', u)); return; }
+    const r = el('div', 'irow');
+    r.append(copyable('button', 'item', u, u));
+    const x = el('button', 'act', '✕'); x.title = 'Remove'; x.onclick = () => removeFrom(removeField, u, true);
+    r.append(x);
+    body.append(r);
+  });
+}
 function techClass(t) {
   const l = t.toLowerCase();
   if (/^(server|powered-by):/.test(l)) return 'b-srv'; if (l.startsWith('generator:')) return 'b-gen';
@@ -567,19 +603,31 @@ const R = {
     const out = el('div'); $('content').append(out);
     const draw = () => { out.replaceChildren(); const f = q.value.toLowerCase(); const l = a.links.filter(u => u.toLowerCase().includes(f));
       if (!l.length) return out.append(el('p', 'note', 'No .html / .php / .asp style links on this origin.'));
-      l.forEach(u => urlRow(out, u)); };
+      l.forEach(u => urlRow(out, u, { removeField: 'links' })); };
     q.oninput = draw; draw();
   },
   intel(a) {
     const list = (title, arr, empty, fn) => { const b = sec(title, arr.length, arr.length > 0); arr.length ? arr.forEach(fn || (x => b.append(copyable('button', 'item !w-full !block mt-1', x)))) : note(b, empty); return b; };
-    list('API endpoints in code', a.endpoints, 'No endpoints spotted in the HTML or inline scripts.', u => urlRow(sec_last(), u));
-    list('Emails', a.emails, 'None found.'); list('Phone numbers', a.phones, 'None found.');
-    list('Social links', a.social, 'None found.', u => urlRow(sec_last(), u, { actions: false }));
+    list('API endpoints in code', a.endpoints, 'No endpoints spotted in the HTML or inline scripts.', u => urlRow(sec_last(), u, { removeField: 'endpoints' }));
+    { const b = sec('Emails', a.emails.length, a.emails.length > 0); plainList(b, a.emails, 'None found.', 'emails'); }
+    { const b = sec('Phone numbers', a.phones.length, a.phones.length > 0); plainList(b, a.phones, 'None found.', 'phones'); }
+    list('Social links', a.social, 'None found.', u => urlRow(sec_last(), u, { actions: false, removeField: 'social' }));
     list('HTML comments', a.comments, 'No comments.', c => sec_last().append(el('pre', 'body', c)));
     list('JSON-LD data', a.jsonld, 'None.', c => sec_last().append(el('pre', 'body', c)));
     function sec_last() { return $('content').lastElementChild.querySelector('.cbody'); }
   }
 };
+function renderLeakBanner() {
+  const n = S.a ? S.a.emails.length : 0;
+  const bar = $('leakBanner');
+  if (!n || bar.dataset.dismissed === '1') { bar.classList.add('hidden'); return; }
+  bar.classList.remove('hidden');
+  $('leakBannerCount').textContent = n;
+  $('leakBannerPlural').textContent = n === 1 ? '' : 's';
+}
+$('leakBannerView').onclick = () => { S.tab = 'intel'; buildTabs(); renderTab(); $('content').scrollTop = 0; };
+$('leakBannerHide').onclick = () => { $('leakBanner').dataset.dismissed = '1'; $('leakBanner').classList.add('hidden'); };
+
 function renderTab() { $('content').replaceChildren(); R[S.tab](S.a); }
 
 /* ---------- extract ---------- */
@@ -602,7 +650,8 @@ async function extract(thenPlay) {
     p.className = 'mono text-[10px] px-2 py-0.5 rounded-full border ' + (c < 300 ? 'text-emerald-400 border-emerald-500/30 bg-emerald-500/10' : c < 400 ? 'text-amber-400 border-amber-500/30 bg-amber-500/10' : 'text-[#ff5c70] border-[#ff2740]/40 bg-[#ff2740]/10');
     $('sessBar').classList.remove('hidden'); $('hostTag').textContent = S.netloc; $('pathInput').value = '/';
     $('frame').style.display = 'none'; $('frameEmpty').style.display = 'flex'; S.local = d.analysis.local_url;
-    buildTabs(); renderTab();
+    $('leakBanner').dataset.dismissed = '0';
+    buildTabs(); renderTab(); renderLeakBanner();
     if (thenPlay) playUrl(S.local); else toast('Extracted ' + S.host);
   } catch (e) {
     clearInterval(progT); toast(e.message === 'Failed to fetch' ? 'Local server not reachable. Is hex.py running?' : e.message, true);

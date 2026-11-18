@@ -1128,6 +1128,24 @@ class EditorHandler(BaseHandler):
                 if job:
                     job["cancel"] = True
                 return self.send_json({"success": True})
+            if route == "/api/update_analysis":
+                sess = SESSIONS.get(body.get("sid", ""))
+                if not sess or not sess.get("analysis"):
+                    return self.send_json({"success": False, "error": "Session expired. Extract again."}, 400)
+                field = body.get("field", "")
+                allowed = {"links", "emails", "phones", "social", "endpoints", "assets", "comments", "jsonld"}
+                if field not in allowed or not isinstance(body.get("value"), list):
+                    return self.send_json({"success": False, "error": "Bad field"}, 400)
+                sess["analysis"][field] = body["value"]
+                sid = sess.get("saved_id")
+                if sid:
+                    p = SAVED / sid / "analysis.json"
+                    if p.is_file():
+                        try:
+                            p.write_text(json.dumps(sess["analysis"]), encoding="utf-8")
+                        except OSError:
+                            pass
+                return self.send_json({"success": True})
             if route == "/api/modify":
                 global _pending_modify
                 sid = sess.get("saved_id")
@@ -2397,6 +2415,34 @@ def ai_turn(state, user_text):
 
 
 # ---- Web Modifier API helpers (for modify.html) -----------------------------
+EMAIL_RE = re.compile(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}")
+EMAIL_SKIP_DOMAINS = ("example.com", "example.org", "sentry.io", "w3.org", "schema.org")
+
+
+def scan_email_leaks(work):
+    """Find email addresses sitting in plain text across the extracted site (JS/HTML/JSON/etc)."""
+    found, seen = [], set()
+    for rel, _ in list_work_files(work):
+        if posixpath.splitext(rel)[1].lower() not in TEXT_EXT:
+            continue
+        text = read_text(work / rel)
+        if not text:
+            continue
+        for m in EMAIL_RE.finditer(text):
+            addr = m.group(0).rstrip(".,;:'\")")
+            dom = addr.split("@")[-1].lower()
+            if dom in EMAIL_SKIP_DOMAINS or addr.lower().startswith(("example@", "test@", "you@", "name@")):
+                continue
+            key = addr.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            found.append({"email": addr, "file": rel})
+            if len(found) >= 40:
+                return found
+    return found
+
+
 def web_mod_open(site_id, pages=1):
     with MOD_LOCK:
         site = get_saved_site(site_id)
@@ -2413,7 +2459,9 @@ def web_mod_open(site_id, pages=1):
             pass
         files = [{"path": r, "bytes": s} for r, s in list_work_files(work)]
         has_groq = bool(get_key(cfg))
+        email_leaks = scan_email_leaks(work)
         return {
+            "email_leaks": email_leaks,
             "success": True,
             "site": site,
             "files": files,

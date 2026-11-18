@@ -100,6 +100,9 @@ body[data-tab=preview] .pane-preview{display:flex}
       <span id="siteName" class="text-xs font-semibold text-white truncate max-w-[115px] sm:max-w-[200px]">Select site</span>
       <svg class="text-slate-400 flex-none" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
     </button>
+    <button id="leakBadge" onclick="showBackdrop('leakModal')" class="hidden items-center gap-1 px-2 py-1 rounded-lg bg-amber-500/15 border border-amber-500/40 text-amber-300 text-[11px] font-medium cursor-pointer hover:bg-amber-500/25 flex-none">
+      ✅ <span id="leakBadgeCount">0</span> email leak<span id="leakBadgePlural">s</span>
+    </button>
   </div>
 
   <!-- Segmented Switcher -->
@@ -136,7 +139,7 @@ body[data-tab=preview] .pane-preview{display:flex}
   <!-- PANE 1: AI STUDIO -->
   <section class="pane pane-studio bg-[radial-gradient(ellipse_at_top,rgba(255,39,64,.07),transparent_55%)]">
     <div id="chatFeed" class="flex-1 min-h-0 overflow-y-auto px-3 sm:px-6 py-5">
-      <div id="chatInner" class="max-w-2xl mx-auto flex flex-col gap-4"></div>
+      <div id="chatInner" class="max-w-2xl mx-auto flex flex-col gap-3"></div>
     </div>
 
     <!-- Floating Composer Dock -->
@@ -281,6 +284,18 @@ body[data-tab=preview] .pane-preview{display:flex}
   </div>
 </div>
 
+<!-- EMAIL LEAK MODAL -->
+<div id="leakModal" class="backdrop">
+  <div class="sheet" onclick="event.stopPropagation()">
+    <div class="flex items-center justify-between mb-3">
+      <h3 class="text-sm font-semibold text-white">✅ Exposed Emails Found</h3>
+      <button class="icon-btn !w-7 !h-7" onclick="hideBackdrop('leakModal')">✕</button>
+    </div>
+    <p class="text-[11px] text-slate-400 mb-3 leading-relaxed">These email addresses sit in plain text inside the extracted site's files. Ask the AI to remove one, e.g. "remove the email in admin.js".</p>
+    <div id="leakList" class="space-y-1.5 max-h-[50vh] overflow-y-auto"></div>
+  </div>
+</div>
+
 <!-- GROQ MODEL MODAL -->
 <div id="modelModal" class="backdrop">
   <div class="sheet" onclick="event.stopPropagation()">
@@ -339,7 +354,7 @@ function el(tag, cls, text) {
 
 const S = {
   id: null, site: null, slots: [], slot: 'qwen', active: null,
-  files: [], sections: {}, scope: '', previewUrl: '', hasKey: false, busy: false
+  files: [], sections: {}, scope: '', previewUrl: '', hasKey: false, busy: false, leaks: []
 };
 let toastT, timerT;
 
@@ -433,6 +448,32 @@ function renderDrawerSites(sites) {
   });
 }
 
+function renderLeaks(leaks) {
+  S.leaks = leaks || [];
+  const badge = $('leakBadge');
+  if (!S.leaks.length) { badge.classList.add('hidden'); badge.classList.remove('flex'); return; }
+  badge.classList.remove('hidden'); badge.classList.add('flex');
+  $('leakBadgeCount').textContent = S.leaks.length;
+  $('leakBadgePlural').textContent = S.leaks.length === 1 ? '' : 's';
+
+  const box = $('leakList');
+  box.replaceChildren();
+  S.leaks.forEach(l => {
+    const row = el('div', 'flex items-center justify-between gap-2 px-2.5 py-2 rounded-lg bg-white/[0.04] border border-white/[0.07]');
+    const left = el('div', 'min-w-0');
+    left.append(el('div', 'mono text-[12px] text-amber-200 truncate', l.email));
+    left.append(el('div', 'mono text-[10px] text-slate-500 truncate', l.file));
+    const fix = el('button', 'px-2 py-1 rounded-md bg-white/[0.06] hover:bg-white/10 text-[10.5px] text-slate-200 cursor-pointer flex-none', 'Ask AI to remove');
+    fix.onclick = () => {
+      hideBackdrop('leakModal');
+      $('promptInput').value = `Remove the exposed email ${l.email} from ${l.file} (redact or delete it safely, keep the file working)`;
+      $('promptInput').focus();
+    };
+    row.append(left, fix);
+    box.append(row);
+  });
+}
+
 function renderDrawerFiles(files) {
   $('drawerFileCount').textContent = files.length;
   const box = $('drawerFiles');
@@ -469,6 +510,7 @@ async function openSite(id) {
     S.slot = d.slot;
     S.active = d.active;
     S.hasKey = Boolean(d.has_groq || d.has_key);
+    renderLeaks(d.email_leaks);
 
     $('siteName').textContent = d.site.netloc;
     $('previewUrlLabel').textContent = d.site.netloc + ' · modified mirror';
@@ -515,6 +557,41 @@ function renderHistory(history) {
   $('chatFeed').scrollTop = $('chatFeed').scrollHeight;
 }
 
+function renderRichText(container, text) {
+  const re = /```(\w*)\n?([\s\S]*?)```/g;
+  const parts = [];
+  let last = 0, m;
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > last) parts.push({ type: 'text', text: text.slice(last, m.index) });
+    parts.push({ type: 'code', lang: (m[1] || '').trim(), code: m[2].replace(/\n$/, '') });
+    last = re.lastIndex;
+  }
+  if (last < text.length) parts.push({ type: 'text', text: text.slice(last) });
+  if (!parts.length) parts.push({ type: 'text', text });
+
+  parts.forEach(p => {
+    if (p.type === 'text') {
+      if (p.text.trim()) container.append(el('div', 'text-[13px] text-slate-100 whitespace-pre-wrap leading-relaxed', p.text.trim()));
+    } else {
+      const box = el('div', 'rounded-lg border border-white/10 bg-black/40 overflow-hidden');
+      const head = el('div', 'flex items-center justify-between px-2.5 py-1.5 bg-white/[0.05] border-b border-white/[0.08]');
+      head.append(el('span', 'mono text-[10px] text-slate-400 lowercase', p.lang || 'code'));
+      const copyBtn = el('button', 'mono text-[10px] text-slate-300 hover:text-white px-2 py-0.5 rounded bg-white/[0.07] hover:bg-white/[0.14] cursor-pointer transition-colors', 'Copy');
+      copyBtn.onclick = () => {
+        navigator.clipboard.writeText(p.code).then(() => {
+          copyBtn.textContent = 'Copied ✓';
+          setTimeout(() => { copyBtn.textContent = 'Copy'; }, 1300);
+        }).catch(() => toast('Could not copy', true));
+      };
+      head.append(copyBtn);
+      const pre = el('pre', 'mono text-[12px] text-slate-100 p-3 overflow-x-auto leading-relaxed');
+      pre.textContent = p.code;
+      box.append(head, pre);
+      container.append(box);
+    }
+  });
+}
+
 function addMessage(role, text, meta = null) {
   const inner = $('chatInner');
   if (inner.firstElementChild && inner.firstElementChild.classList.contains('text-center')) {
@@ -522,14 +599,15 @@ function addMessage(role, text, meta = null) {
   }
   if (role === 'user') {
     const wrap = el('div', 'flex justify-end appear');
-    const card = el('div', 'max-w-[85%] px-3.5 py-2.5 rounded-2xl rounded-br-sm bg-white/[0.09] border border-white/[0.12] text-[13px] text-white whitespace-pre-wrap leading-relaxed', text);
+    const card = el('div', 'max-w-[85%] px-3 py-2 rounded-xl rounded-br-sm bg-white/[0.09] border border-white/[0.12] text-[13px] text-white whitespace-pre-wrap leading-relaxed', text);
     wrap.append(card);
     inner.append(wrap);
   } else {
-    const wrap = el('div', 'flex items-start gap-2.5 appear');
-    const av = el('div', 'w-6 h-6 rounded-lg bg-[#ff2740]/20 border border-[#ff2740]/50 text-[#ff2740] flex items-center justify-center flex-none mt-0.5 mono text-[10px] font-bold', 'H');
+    const wrap = el('div', 'flex items-start gap-2 appear');
+    const av = el('div', 'w-5 h-5 rounded-md bg-[#ff2740]/20 border border-[#ff2740]/50 text-[#ff2740] flex items-center justify-center flex-none mt-0.5 mono text-[9px] font-bold', 'H');
     const col = el('div', 'flex-1 min-w-0 space-y-2');
-    const body = el('div', 'text-[13px] text-slate-100 whitespace-pre-wrap leading-relaxed', text);
+    const body = el('div', 'space-y-2');
+    renderRichText(body, text);
     col.append(body);
 
     if (meta && (meta.applied && meta.applied.length || meta.self_fixed)) {
